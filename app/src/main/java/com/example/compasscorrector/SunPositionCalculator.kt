@@ -181,9 +181,15 @@ object SunPositionCalculator {
     // The user points the *bottom* of the phone at the sun.
     // This is mathematically equivalent to holding an upside-down clock where 12 is at the bottom,
     // which automatically points the 12 o'clock mark at the sun.
-    fun calculateFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Double {
+    fun calculateFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean, isDstActive: Boolean): Double {
         val cal = Calendar.getInstance()
         cal.timeInMillis = currentTimeMillis
+
+        // If DST is active, subtract 1 hour to get true standard local time for the sun.
+        if (isDstActive) {
+            cal.add(Calendar.HOUR_OF_DAY, -1)
+        }
+
         val h = cal.get(Calendar.HOUR_OF_DAY)
         val m = cal.get(Calendar.MINUTE)
 

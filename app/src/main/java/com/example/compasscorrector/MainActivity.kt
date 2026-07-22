@@ -94,6 +94,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var useTrueNorth by remember { mutableStateOf(false) }
     var isNorthernHemisphere by remember { mutableStateOf(true) } // For manual fallback
 
+    // Auto-detect DST
+    val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
+    var isDstActive by remember { mutableStateOf(defaultDst) }
+
     // Update magnetic azimuth
     DisposableEffect(Unit) {
         sensorHelper.onAzimuthChanged = { azimuth ->
@@ -160,7 +164,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     } else {
         isNight = SunPositionCalculator.isNightFallback()
-        solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere).toFloat()
+        solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere, isDstActive).toFloat()
         compassAzimuth = magneticAzimuth
     }
 
@@ -182,6 +186,19 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             .fillMaxSize()
             .background(Color.DarkGray) // Dark background
     ) {
+        // Debug Text at very top left
+        Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
+            val debugText = """
+                Loc: ${if (location != null) "%.4f, %.4f".format(location!!.latitude, location!!.longitude) else "null"}
+                Magnetic Az: %.1f
+                True North: $useTrueNorth
+                Solar Az (Rel): %.1f
+                DST: $isDstActive
+                Hemi: ${if(isNorthernHemisphere) "N" else "S"}
+            """.trimIndent()
+            Text(debugText, color = Color.White.copy(alpha=0.5f), fontSize = 10.sp)
+        }
+
         // Human shadow background silhouette
         Canvas(modifier = Modifier.fillMaxSize()) {
             val path = Path().apply {
@@ -334,11 +351,14 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     Text("Use GNSS for Solar North", color = Color.White)
                 }
 
+                // Only enable True North if GNSS is selected AND we actually have a location
+                val trueNorthEnabled = useGNSS && location != null
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
                         checked = useTrueNorth,
                         onCheckedChange = { useTrueNorth = it },
-                        enabled = useGNSS,
+                        enabled = trueNorthEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
                             uncheckedColor = Color.White,
@@ -349,18 +369,27 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     )
                     Text(
                         "Adjust Magnetic to True North",
-                        color = if (useGNSS) Color.White else Color.Gray
+                        color = if (trueNorthEnabled) Color.White else Color.Gray
                     )
                 }
 
-                if (!useGNSS) {
+                if (!useGNSS || location == null) {
                     Text("Warning: Magnetic North is not adjusted to True North.", color = Color.Red)
                 }
             } else {
                 Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Yellow)
             }
 
-            if (!useGNSS || !hasLocationPermission) {
+            if (!useGNSS || !hasLocationPermission || location == null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = isDstActive,
+                        onCheckedChange = { isDstActive = it },
+                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.White, checkmarkColor = Color.White)
+                    )
+                    Text("DST Active (Daylight Saving Time)", color = Color.White)
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Select Hemisphere:", color = Color.White)
                 // Hemisphere selection (Simple two buttons as a globe)
