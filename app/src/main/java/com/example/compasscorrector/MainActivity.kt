@@ -20,6 +20,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -171,6 +175,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     if (diff < -180f) diff += 360f
     if (diff > 180f) diff -= 360f
 
+    val textMeasurer = rememberTextMeasurer()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -227,7 +233,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     }
 
                     // Center: Triangle with upside down clock & half sun
-                    Box(modifier = Modifier.size(160.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(200.dp), contentAlignment = Alignment.Center) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val path = Path().apply {
                                 moveTo(size.width / 2, 0f)
@@ -243,14 +249,30 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                                 startAngle = 180f,
                                 sweepAngle = 180f,
                                 useCenter = true,
-                                topLeft = Offset(size.width / 2 - 20f, size.height - 20f),
-                                size = androidx.compose.ui.geometry.Size(40f, 40f)
+                                topLeft = Offset(size.width / 2 - 24f, size.height - 24f),
+                                size = androidx.compose.ui.geometry.Size(48f, 48f)
                             )
 
                             // Upside down clock
-                            val clockRadius = size.width * 0.3f
+                            val clockRadius = size.width * 0.35f
                             val center = Offset(size.width / 2, size.height * 0.6f)
                             drawCircle(Color.White, radius = clockRadius, center = center)
+
+                            // Quarter numbers for upside-down clock
+                            val textStyle = TextStyle(color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            val offset12 = textMeasurer.measure("12", textStyle)
+                            val offset3 = textMeasurer.measure("3", textStyle)
+                            val offset6 = textMeasurer.measure("6", textStyle)
+                            val offset9 = textMeasurer.measure("9", textStyle)
+
+                            // 12 is at the bottom
+                            drawText(textMeasurer, "12", center + Offset(-offset12.size.width/2f, clockRadius - offset12.size.height - 4f), style = textStyle)
+                            // 6 is at the top
+                            drawText(textMeasurer, "6", center + Offset(-offset6.size.width/2f, -clockRadius + 4f), style = textStyle)
+                            // 3 is at the left (looking upside down)
+                            drawText(textMeasurer, "3", center + Offset(-clockRadius + 4f, -offset3.size.height/2f), style = textStyle)
+                            // 9 is at the right (looking upside down)
+                            drawText(textMeasurer, "9", center + Offset(clockRadius - offset9.size.width - 4f, -offset9.size.height/2f), style = textStyle)
 
                             val cal = Calendar.getInstance()
                             val h = cal.get(Calendar.HOUR)
@@ -300,15 +322,38 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
             if (hasLocationPermission) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = useGNSS, onCheckedChange = { useGNSS = it })
+                    Checkbox(
+                        checked = useGNSS,
+                        onCheckedChange = { useGNSS = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,
+                            uncheckedColor = Color.White,
+                            checkmarkColor = Color.White
+                        )
+                    )
                     Text("Use GNSS for Solar North", color = Color.White)
                 }
-                if (useGNSS) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = useTrueNorth, onCheckedChange = { useTrueNorth = it })
-                        Text("Adjust Magnetic to True North", color = Color.White)
-                    }
-                } else {
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = useTrueNorth,
+                        onCheckedChange = { useTrueNorth = it },
+                        enabled = useGNSS,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,
+                            uncheckedColor = Color.White,
+                            checkmarkColor = Color.White,
+                            disabledUncheckedColor = Color.Gray,
+                            disabledCheckedColor = Color.Gray
+                        )
+                    )
+                    Text(
+                        "Adjust Magnetic to True North",
+                        color = if (useGNSS) Color.White else Color.Gray
+                    )
+                }
+
+                if (!useGNSS) {
                     Text("Warning: Magnetic North is not adjusted to True North.", color = Color.Red)
                 }
             } else {
