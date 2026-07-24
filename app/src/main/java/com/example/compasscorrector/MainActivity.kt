@@ -195,7 +195,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 Solar Az (Rel): %.1f
                 DST: $isDstActive
                 Hemi: ${if(isNorthernHemisphere) "N" else "S"}
-            """.trimIndent()
+            """.trimIndent().format(magneticAzimuth, solarNorthRelativeAzimuth)
             Text(debugText, color = Color.White.copy(alpha=0.5f), fontSize = 10.sp)
         }
 

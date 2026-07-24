@@ -177,10 +177,8 @@ object SunPositionCalculator {
         return hour >= 18 || hour < 6
     }
 
-    // Calculates fallback relative north using the watch/bisect method.
+    // Calculates fallback relative north using an astronomical approximation (15 degrees per hour).
     // The user points the *bottom* of the phone at the sun.
-    // This is mathematically equivalent to holding an upside-down clock where 12 is at the bottom,
-    // which automatically points the 12 o'clock mark at the sun.
     fun calculateFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean, isDstActive: Boolean): Double {
         val cal = Calendar.getInstance()
         cal.timeInMillis = currentTimeMillis
@@ -193,46 +191,22 @@ object SunPositionCalculator {
         val h = cal.get(Calendar.HOUR_OF_DAY)
         val m = cal.get(Calendar.MINUTE)
 
-        // The angle of the hour hand on a 12h clock face (0 degrees is straight UP relative to phone top).
-        // Because the clock on screen is upside down, 12 is at the bottom (180 degrees).
-        // Wait, the hour hand on the *on-screen upside-down clock* has an angle relative to phone top.
-        // 12 is at 180 deg. The hour hand moves clockwise from there.
-        // Let's calculate the physical angle of the hour hand relative to the phone top (0 deg).
-        // 12:00 = 180 deg
-        // 3:00 = 270 deg
-        // 6:00 = 0 deg
-        // 9:00 = 90 deg
-        val hourAngleFrom12 = ((h % 12) + m / 60.0) * 30.0 // 0 to 360
-        val physicalHourAngle = (180.0 + hourAngleFrom12) % 360.0 // Relative to phone top
+        // Calculate absolute solar azimuth based on time.
+        // The sun moves ~15 degrees per hour.
+        // In the Northern Hemisphere, at 12:00 standard time, the sun is exactly South (180 degrees).
+        // In the Southern Hemisphere, at 12:00 standard time, the sun is exactly North (0 degrees).
+        val decimalHour = h + m / 60.0
 
-        // Watch method states:
-        // Northern Hemisphere: Point the hour hand at the sun. South is halfway between hour hand and 12.
-        // But the user points the *bottom* (12 on our upside-down clock, i.e., 180 degrees) at the sun.
-        // So we are pointing the 12 mark at the sun, not the hour hand.
-        // Watch method alternative: Point 12 at the sun. South is halfway between hour hand and 12. (This is exactly what we are doing!)
-        // Halfway between the physical hour angle and 180 degrees.
-
-        // Let's find the bisector angle between physicalHourAngle and 180.
-        // To find the shortest path bisector, we average them, but need to be careful about wrapping.
-        var a1 = physicalHourAngle
-        var a2 = 180.0
-
-        // Calculate difference
-        var diff = a1 - a2
-        if (diff < -180.0) diff += 360.0
-        if (diff > 180.0) diff -= 360.0
-
-        // Bisector is a2 + diff / 2
-        var bisect = (a2 + diff / 2.0) % 360.0
-        if (bisect < 0) bisect += 360.0
-
-        // In Northern hemisphere, this bisect line points South. North is opposite.
-        // In Southern hemisphere, this bisect line points North.
-        val relativeNorth = if (isNorthernHemisphere) {
-            (bisect + 180.0) % 360.0
+        val solarAbsoluteAzimuth = if (isNorthernHemisphere) {
+            (180.0 + (decimalHour - 12.0) * 15.0 + 360.0) % 360.0
         } else {
-            bisect
+            (0.0 + (decimalHour - 12.0) * 15.0 + 360.0) % 360.0
         }
+
+        // The user points the bottom of the device at the sun.
+        // So the absolute device heading is solarAbsoluteAzimuth - 180.
+        // The relative angle of North (0) compared to the device top is:
+        val relativeNorth = (180.0 - solarAbsoluteAzimuth + 360.0) % 360.0
 
         return relativeNorth
     }
