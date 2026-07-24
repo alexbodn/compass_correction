@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
@@ -304,20 +305,25 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             val clockRadius = size.width * 0.25f
                             drawCircle(Color.White, radius = clockRadius, center = dialCenter)
 
-                            val cal = Calendar.getInstance()
+                            val localCal = Calendar.getInstance()
 
-                            // Subtract 1 hour for DST if active so the physical display matches the solar fallback logic
-                            if (isDstActive && (!useGNSS || location == null)) {
-                                cal.add(Calendar.HOUR_OF_DAY, -1)
+                            val localH = localCal.get(Calendar.HOUR)
+                            val localM = localCal.get(Calendar.MINUTE)
+
+                            val stdCal = Calendar.getInstance()
+                            if (isDstActive) {
+                                stdCal.add(Calendar.HOUR_OF_DAY, -1)
                             }
+                            val stdH = stdCal.get(Calendar.HOUR)
+                            val stdM = stdCal.get(Calendar.MINUTE)
 
-                            val h = cal.get(Calendar.HOUR)
-                            val m = cal.get(Calendar.MINUTE)
+                            val h = if (isDstActive && (!useGNSS || location == null)) stdH else localH
+                            val m = if (isDstActive && (!useGNSS || location == null)) stdM else localM
 
                             // Calculate normal hour angle relative to top (12 o'clock)
                             val normalHourAngle = h * 30f + m * 0.5f
 
-                            // We want the hour hand to point straight down (towards the sun at bottom).
+                            // We want the primary hour hand to point straight down (towards the sun at bottom).
                             val dialRotation = 180f - normalHourAngle
 
                             rotate(dialRotation, dialCenter) {
@@ -334,18 +340,49 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                                 drawText(textMeasurer, "9", dialCenter + Offset(-clockRadius + 8f, -offset9.size.height/2f), style = textStyle)
 
                                 // Draw hands inside the rotated context.
-                                val hourAngleInside = Math.toRadians(-90.0 + (h * 30 + m * 0.5)).toFloat()
-                                val minuteAngleInside = Math.toRadians(-90.0 + m * 6).toFloat()
+                                val minuteAngleInside = Math.toRadians(-90.0 + localM * 6).toFloat()
 
-                                drawLine(
-                                    color = Color.Black,
-                                    start = dialCenter,
-                                    end = Offset(
-                                        dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
-                                        dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
-                                    ),
-                                    strokeWidth = 10f
-                                )
+                                if (isDstActive && (!useGNSS || location == null)) {
+                                    // If fallback calculation with DST is active, show the standard hour hand (dotted) and the local hour hand (solid)
+                                    val stdHourAngleInside = Math.toRadians(-90.0 + (stdH * 30 + stdM * 0.5)).toFloat()
+                                    val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+
+                                    // Draw local hour hand (solid)
+                                    drawLine(
+                                        color = Color.Black,
+                                        start = dialCenter,
+                                        end = Offset(
+                                            dialCenter.x + clockRadius * 0.6f * cos(localHourAngleInside),
+                                            dialCenter.y + clockRadius * 0.6f * sin(localHourAngleInside)
+                                        ),
+                                        strokeWidth = 10f
+                                    )
+
+                                    // Draw standard hour hand (dotted)
+                                    drawLine(
+                                        color = Color.Black,
+                                        start = dialCenter,
+                                        end = Offset(
+                                            dialCenter.x + clockRadius * 0.6f * cos(stdHourAngleInside),
+                                            dialCenter.y + clockRadius * 0.6f * sin(stdHourAngleInside)
+                                        ),
+                                        strokeWidth = 10f,
+                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                    )
+                                } else {
+                                    // Draw primary hour hand
+                                    val hourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+                                    drawLine(
+                                        color = Color.Black,
+                                        start = dialCenter,
+                                        end = Offset(
+                                            dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
+                                            dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
+                                        ),
+                                        strokeWidth = 10f
+                                    )
+                                }
+
                                 drawLine(
                                     color = Color.Black,
                                     start = dialCenter,
