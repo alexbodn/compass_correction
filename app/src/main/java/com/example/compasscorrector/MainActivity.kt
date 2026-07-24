@@ -270,55 +270,73 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                                 size = androidx.compose.ui.geometry.Size(48f, 48f)
                             )
 
-                            // Upside down clock
+                            // Rotating watch dial
                             val clockRadius = size.width * 0.35f
                             val center = Offset(size.width / 2, size.height * 0.6f)
                             drawCircle(Color.White, radius = clockRadius, center = center)
 
-                            // Quarter numbers for upside-down clock
-                            val textStyle = TextStyle(color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            val offset12 = textMeasurer.measure("12", textStyle)
-                            val offset3 = textMeasurer.measure("3", textStyle)
-                            val offset6 = textMeasurer.measure("6", textStyle)
-                            val offset9 = textMeasurer.measure("9", textStyle)
-
-                            // 12 is at the bottom
-                            drawText(textMeasurer, "12", center + Offset(-offset12.size.width/2f, clockRadius - offset12.size.height - 4f), style = textStyle)
-                            // 6 is at the top
-                            drawText(textMeasurer, "6", center + Offset(-offset6.size.width/2f, -clockRadius + 4f), style = textStyle)
-                            // 3 is at the left (looking upside down)
-                            drawText(textMeasurer, "3", center + Offset(-clockRadius + 4f, -offset3.size.height/2f), style = textStyle)
-                            // 9 is at the right (looking upside down)
-                            drawText(textMeasurer, "9", center + Offset(clockRadius - offset9.size.width - 4f, -offset9.size.height/2f), style = textStyle)
-
                             val cal = Calendar.getInstance()
+
+                            // Subtract 1 hour for DST if active so the physical display matches the solar fallback logic
+                            if (isDstActive && (!useGNSS || location == null)) {
+                                cal.add(Calendar.HOUR_OF_DAY, -1)
+                            }
+
                             val h = cal.get(Calendar.HOUR)
                             val m = cal.get(Calendar.MINUTE)
 
-                            // Upside down: 12 is at the bottom (+90 deg mathematically if 0 is right, but Compose 0 is 3 o'clock)
-                            // Normally 12 is -90 deg. Upside down 12 is +90 deg.
-                            // Hour hand angle: 90 + (h * 30 + m * 0.5)
-                            val hourAngle = Math.toRadians(90.0 + (h * 30 + m * 0.5)).toFloat()
-                            val minuteAngle = Math.toRadians(90.0 + m * 6).toFloat()
+                            // Calculate normal hour angle relative to top (12 o'clock)
+                            val normalHourAngle = h * 30f + m * 0.5f
 
-                            drawLine(
-                                color = Color.Black,
-                                start = center,
-                                end = Offset(
-                                    center.x + clockRadius * 0.6f * cos(hourAngle),
-                                    center.y + clockRadius * 0.6f * sin(hourAngle)
-                                ),
-                                strokeWidth = 8f
-                            )
-                            drawLine(
-                                color = Color.Black,
-                                start = center,
-                                end = Offset(
-                                    center.x + clockRadius * 0.8f * cos(minuteAngle),
-                                    center.y + clockRadius * 0.8f * sin(minuteAngle)
-                                ),
-                                strokeWidth = 4f
-                            )
+                            // We want the hour hand to point straight down (towards the sun at bottom).
+                            // A normal dial has 12 at the top. The hour hand is at `normalHourAngle`.
+                            // To make the hour hand point straight down (which is 180 degrees from top),
+                            // we must rotate the entire dial by `180 - normalHourAngle`.
+                            val dialRotation = 180f - normalHourAngle
+
+                            rotate(dialRotation, center) {
+                                val textStyle = TextStyle(color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                val offset12 = textMeasurer.measure("12", textStyle)
+                                val offset3 = textMeasurer.measure("3", textStyle)
+                                val offset6 = textMeasurer.measure("6", textStyle)
+                                val offset9 = textMeasurer.measure("9", textStyle)
+
+                                // Draw numbers in their normal positions on the dial
+                                // 12 at top
+                                drawText(textMeasurer, "12", center + Offset(-offset12.size.width/2f, -clockRadius + 4f), style = textStyle)
+                                // 6 at bottom
+                                drawText(textMeasurer, "6", center + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 4f), style = textStyle)
+                                // 3 at right
+                                drawText(textMeasurer, "3", center + Offset(clockRadius - offset3.size.width - 4f, -offset3.size.height/2f), style = textStyle)
+                                // 9 at left
+                                drawText(textMeasurer, "9", center + Offset(-clockRadius + 4f, -offset9.size.height/2f), style = textStyle)
+
+                                // Draw hands inside the rotated context.
+                                // The hands are positioned at their normal angles relative to 12.
+                                // In compose, 0 degrees is 3 o'clock.
+                                // So 12 o'clock is -90 degrees.
+                                val hourAngleInside = Math.toRadians(-90.0 + (h * 30 + m * 0.5)).toFloat()
+                                val minuteAngleInside = Math.toRadians(-90.0 + m * 6).toFloat()
+
+                                drawLine(
+                                    color = Color.Black,
+                                    start = center,
+                                    end = Offset(
+                                        center.x + clockRadius * 0.6f * cos(hourAngleInside),
+                                        center.y + clockRadius * 0.6f * sin(hourAngleInside)
+                                    ),
+                                    strokeWidth = 8f
+                                )
+                                drawLine(
+                                    color = Color.Black,
+                                    start = center,
+                                    end = Offset(
+                                        center.x + clockRadius * 0.8f * cos(minuteAngleInside),
+                                        center.y + clockRadius * 0.8f * sin(minuteAngleInside)
+                                    ),
+                                    strokeWidth = 4f
+                                )
+                            }
                         }
                     }
 
