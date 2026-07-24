@@ -184,8 +184,36 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.DarkGray) // Dark background
+            .background(Color.White) // White background
     ) {
+        // Human shadow background silhouette
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val path = Path().apply {
+                // Lower body / legs
+                moveTo(size.width * 0.35f, size.height)
+                lineTo(size.width * 0.65f, size.height)
+                lineTo(size.width * 0.55f, size.height * 0.5f)
+                lineTo(size.width * 0.45f, size.height * 0.5f)
+                close()
+
+                // Torso and Shoulders
+                moveTo(size.width * 0.45f, size.height * 0.5f)
+                lineTo(size.width * 0.55f, size.height * 0.5f)
+                lineTo(size.width * 0.75f, size.height * 0.3f) // Right shoulder
+                lineTo(size.width * 0.55f, size.height * 0.28f) // Right neck base
+                lineTo(size.width * 0.45f, size.height * 0.28f) // Left neck base
+                lineTo(size.width * 0.25f, size.height * 0.3f) // Left shoulder
+                close()
+
+                // Head
+                addOval(androidx.compose.ui.geometry.Rect(
+                    size.width * 0.35f, size.height * 0.1f,
+                    size.width * 0.65f, size.height * 0.28f
+                ))
+            }
+            drawPath(path, Color.Black.copy(alpha = 0.15f))
+        }
+
         // Debug Text at very top left
         Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
             val debugText = """
@@ -196,33 +224,14 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 DST: $isDstActive
                 Hemi: ${if(isNorthernHemisphere) "N" else "S"}
             """.trimIndent().format(magneticAzimuth, solarNorthRelativeAzimuth)
-            Text(debugText, color = Color.White.copy(alpha=0.5f), fontSize = 10.sp)
-        }
-
-        // Human shadow background silhouette
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val path = Path().apply {
-                moveTo(size.width * 0.4f, size.height)
-                lineTo(size.width * 0.6f, size.height)
-                lineTo(size.width * 0.7f, size.height * 0.5f)
-                lineTo(size.width * 0.55f, size.height * 0.3f)
-                // Head
-                addOval(androidx.compose.ui.geometry.Rect(
-                    size.width * 0.4f, size.height * 0.15f,
-                    size.width * 0.6f, size.height * 0.3f
-                ))
-                lineTo(size.width * 0.45f, size.height * 0.3f)
-                lineTo(size.width * 0.3f, size.height * 0.5f)
-                close()
-            }
-            drawPath(path, Color(0xFF222222))
+            Text(debugText, color = Color.Black.copy(alpha=0.5f), fontSize = 10.sp)
         }
 
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("Align the triangle base with your shadow", color = Color.White, fontSize = 18.sp)
+            Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
 
             if (isNight) {
@@ -230,50 +239,70 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 Spacer(modifier = Modifier.weight(1f))
             } else {
 
-                Text(String.format("Correction Angle: %.1f°", diff), color = Color.Yellow, fontSize = 24.sp)
+                Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Row(
+                // Unified central dial
+                Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Left: Magnetic Compass
-                    Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            drawCircle(Color.White, style = Stroke(width = 4f))
-                            rotate(relativeMagneticNorth) {
-                                drawLine(Color.Red, start = center, end = Offset(center.x, 0f), strokeWidth = 8f)
-                                drawLine(Color.Blue, start = center, end = Offset(center.x, size.height), strokeWidth = 8f)
-                            }
-                        }
-                    }
 
-                    // Center: Triangle with upside down clock & half sun
-                    Box(modifier = Modifier.size(200.dp), contentAlignment = Alignment.Center) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            // Central triangle (bigger and sharper)
                             val path = Path().apply {
-                                moveTo(size.width / 2, 0f)
-                                lineTo(size.width, size.height)
-                                lineTo(0f, size.height)
+                                moveTo(size.width / 2, size.height * 0.1f)
+                                lineTo(size.width * 0.85f, size.height * 0.9f)
+                                lineTo(size.width * 0.15f, size.height * 0.9f)
                                 close()
                             }
                             drawPath(path, Color.Gray.copy(alpha = 0.5f))
 
                             // Half Sun at bottom base
                             drawArc(
-                                color = Color.Yellow,
+                                color = Color(0xFFFFD700), // Gold/Yellow
                                 startAngle = 180f,
                                 sweepAngle = 180f,
                                 useCenter = true,
-                                topLeft = Offset(size.width / 2 - 24f, size.height - 24f),
-                                size = androidx.compose.ui.geometry.Size(48f, 48f)
+                                topLeft = Offset(size.width / 2 - 32f, size.height * 0.9f - 32f),
+                                size = androidx.compose.ui.geometry.Size(64f, 64f)
                             )
 
-                            // Rotating watch dial
-                            val clockRadius = size.width * 0.35f
-                            val center = Offset(size.width / 2, size.height * 0.6f)
-                            drawCircle(Color.White, radius = clockRadius, center = center)
+                            // Outer unified dial for indicators
+                            val dialCenter = Offset(size.width / 2, size.height * 0.5f)
+                            val outerRadius = size.width * 0.45f
+                            drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
+
+                            // Draw Magnetic North Indicator
+                            rotate(relativeMagneticNorth, dialCenter) {
+                                drawLine(
+                                    color = Color.Red,
+                                    start = dialCenter,
+                                    end = Offset(dialCenter.x, dialCenter.y - outerRadius),
+                                    strokeWidth = 10f
+                                )
+                                drawLine(
+                                    color = Color.Blue,
+                                    start = dialCenter,
+                                    end = Offset(dialCenter.x, dialCenter.y + outerRadius),
+                                    strokeWidth = 10f
+                                )
+                            }
+
+                            // Draw Solar North Indicator
+                            rotate(solarNorthRelativeAzimuth, dialCenter) {
+                                drawLine(
+                                    color = Color(0xFFFFD700), // Gold/Yellow
+                                    start = dialCenter,
+                                    end = Offset(dialCenter.x, dialCenter.y - outerRadius),
+                                    strokeWidth = 10f
+                                )
+                            }
+
+                            // Rotating watch dial (inner)
+                            val clockRadius = size.width * 0.25f
+                            drawCircle(Color.White, radius = clockRadius, center = dialCenter)
 
                             val cal = Calendar.getInstance()
 
@@ -289,63 +318,43 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             val normalHourAngle = h * 30f + m * 0.5f
 
                             // We want the hour hand to point straight down (towards the sun at bottom).
-                            // A normal dial has 12 at the top. The hour hand is at `normalHourAngle`.
-                            // To make the hour hand point straight down (which is 180 degrees from top),
-                            // we must rotate the entire dial by `180 - normalHourAngle`.
                             val dialRotation = 180f - normalHourAngle
 
-                            rotate(dialRotation, center) {
-                                val textStyle = TextStyle(color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            rotate(dialRotation, dialCenter) {
+                                val textStyle = TextStyle(color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                 val offset12 = textMeasurer.measure("12", textStyle)
                                 val offset3 = textMeasurer.measure("3", textStyle)
                                 val offset6 = textMeasurer.measure("6", textStyle)
                                 val offset9 = textMeasurer.measure("9", textStyle)
 
-                                // Draw numbers in their normal positions on the dial
-                                // 12 at top
-                                drawText(textMeasurer, "12", center + Offset(-offset12.size.width/2f, -clockRadius + 4f), style = textStyle)
-                                // 6 at bottom
-                                drawText(textMeasurer, "6", center + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 4f), style = textStyle)
-                                // 3 at right
-                                drawText(textMeasurer, "3", center + Offset(clockRadius - offset3.size.width - 4f, -offset3.size.height/2f), style = textStyle)
-                                // 9 at left
-                                drawText(textMeasurer, "9", center + Offset(-clockRadius + 4f, -offset9.size.height/2f), style = textStyle)
+                                // Draw numbers
+                                drawText(textMeasurer, "12", dialCenter + Offset(-offset12.size.width/2f, -clockRadius + 8f), style = textStyle)
+                                drawText(textMeasurer, "6", dialCenter + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 8f), style = textStyle)
+                                drawText(textMeasurer, "3", dialCenter + Offset(clockRadius - offset3.size.width - 8f, -offset3.size.height/2f), style = textStyle)
+                                drawText(textMeasurer, "9", dialCenter + Offset(-clockRadius + 8f, -offset9.size.height/2f), style = textStyle)
 
                                 // Draw hands inside the rotated context.
-                                // The hands are positioned at their normal angles relative to 12.
-                                // In compose, 0 degrees is 3 o'clock.
-                                // So 12 o'clock is -90 degrees.
                                 val hourAngleInside = Math.toRadians(-90.0 + (h * 30 + m * 0.5)).toFloat()
                                 val minuteAngleInside = Math.toRadians(-90.0 + m * 6).toFloat()
 
                                 drawLine(
                                     color = Color.Black,
-                                    start = center,
+                                    start = dialCenter,
                                     end = Offset(
-                                        center.x + clockRadius * 0.6f * cos(hourAngleInside),
-                                        center.y + clockRadius * 0.6f * sin(hourAngleInside)
+                                        dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
+                                        dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
                                     ),
-                                    strokeWidth = 8f
+                                    strokeWidth = 10f
                                 )
                                 drawLine(
                                     color = Color.Black,
-                                    start = center,
+                                    start = dialCenter,
                                     end = Offset(
-                                        center.x + clockRadius * 0.8f * cos(minuteAngleInside),
-                                        center.y + clockRadius * 0.8f * sin(minuteAngleInside)
+                                        dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
+                                        dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
                                     ),
-                                    strokeWidth = 4f
+                                    strokeWidth = 6f
                                 )
-                            }
-                        }
-                    }
-
-                    // Right: Solar calculated North arrow
-                    Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
-                         Canvas(modifier = Modifier.fillMaxSize()) {
-                            drawCircle(Color.White, style = Stroke(width = 4f))
-                            rotate(solarNorthRelativeAzimuth) {
-                                drawLine(Color.Yellow, start = center, end = Offset(center.x, 0f), strokeWidth = 8f)
                             }
                         }
                     }
@@ -362,15 +371,15 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onCheckedChange = { useGNSS = it },
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
-                            uncheckedColor = Color.White,
+                            uncheckedColor = Color.Black,
                             checkmarkColor = Color.White
                         )
                     )
-                    Text("Use GNSS for Solar North", color = Color.White)
+                    Text("Use GNSS for Solar North", color = Color.Black)
                 }
 
-                // Only enable True North if GNSS is selected AND we actually have a location
-                val trueNorthEnabled = useGNSS && location != null
+                // Enable True North if we actually have a location, regardless of solar calculation setting
+                val trueNorthEnabled = location != null
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
@@ -379,7 +388,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         enabled = trueNorthEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
-                            uncheckedColor = Color.White,
+                            uncheckedColor = Color.Black,
                             checkmarkColor = Color.White,
                             disabledUncheckedColor = Color.Gray,
                             disabledCheckedColor = Color.Gray
@@ -387,15 +396,15 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     )
                     Text(
                         "Adjust Magnetic to True North",
-                        color = if (trueNorthEnabled) Color.White else Color.Gray
+                        color = if (trueNorthEnabled) Color.Black else Color.Gray
                     )
                 }
 
-                if (!useGNSS || location == null) {
+                if (location == null) {
                     Text("Warning: Magnetic North is not adjusted to True North.", color = Color.Red)
                 }
             } else {
-                Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Yellow)
+                Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red)
             }
 
             if (!useGNSS || !hasLocationPermission || location == null) {
@@ -404,12 +413,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     Checkbox(
                         checked = isDstActive,
                         onCheckedChange = { isDstActive = it },
-                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.White, checkmarkColor = Color.White)
+                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.Black, checkmarkColor = Color.White)
                     )
-                    Text("DST Active (Daylight Saving Time)", color = Color.White)
+                    Text("DST Active (Daylight Saving Time)", color = Color.Black)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Select Hemisphere:", color = Color.White)
+                Text("Select Hemisphere:", color = Color.Black)
                 // Hemisphere selection (Simple two buttons as a globe)
                 Row {
                     Button(
