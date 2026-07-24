@@ -192,47 +192,32 @@ object SunPositionCalculator {
         val h12 = cal.get(Calendar.HOUR)
         val m = cal.get(Calendar.MINUTE)
 
-        // The upside down clock face has 12 at the bottom, 6 at the top.
-        // Hour hand angle relative to top (6 o'clock position = 0 deg)
-        // 12 o'clock is at the bottom = 180 deg
-        val hourHandAngleFromTop = (180.0 + (h12 * 30.0) + (m * 0.5)) % 360.0
-
         // Bisect method:
-        // In the Northern Hemisphere, South is halfway between the hour hand and 12 o'clock.
-        // Because our 12 o'clock is at the bottom (180 deg) and 6 is at the top (0 deg),
-        // we can simply bisect between the hour hand and the top of the phone (6 o'clock)
-        // to find the angle pointing North.
-        val bisectAngle = hourHandAngleFromTop / 2.0
+        // Point hour hand at sun. The sun is at the bottom of the phone (180 degrees).
+        // The hour hand angle relative to 12 o'clock is:
+        val angleFrom12 = (h12 * 30.0 + m * 0.5) % 360.0
+
+        // The smaller angle between the hour hand and 12 o'clock must be bisected.
+        // The hour hand is at 180 on our fixed phone reference frame.
+        // Therefore, 12 o'clock is at (180 - angleFrom12).
+        // The bisector of the *smaller* angle between them is South (in Northern Hemisphere)
+        // or North (in Southern Hemisphere).
+
+        val bisectorOfSmallerAngle = if (angleFrom12 < 180.0) {
+            // PM (after noon)
+            (180.0 - angleFrom12 / 2.0) % 360.0
+        } else {
+            // AM (before noon)
+            (360.0 - angleFrom12 / 2.0) % 360.0
+        }
 
         val relativeNorth = if (isNorthernHemisphere) {
-            // In Northern Hemisphere, bisecting hour hand and 12 gives South.
-            // But we bisect hour hand and *6* (top), which gives North directly.
-            // However, depending on whether it's before or after 6, the bisector could be the obtuse angle.
-            // Wait, standard method: point hour hand at sun. South is halfway between hour and 12.
-            // On upside down watch, sun is at bottom (180 deg). So user aligns the triangle base with shadow.
-            // This means the physical sun is at 180 deg relative to phone top.
-            // If the sun is at 180 deg, and hour hand is at `hourHandAngleFromTop`,
-            // we align them by rotating the phone by `180 - hourHandAngleFromTop`.
-            // Let's model it mathematically.
-
-            // Actually, the user doesn't align the hour hand, they align the phone (triangle base) with their shadow.
-            // This means the phone's bottom (180 deg) points to the sun.
-            // If the phone's bottom points to the sun, the sun is at 180 deg relative to the phone's top.
-            // On a normal watch, South is halfway between hour hand and 12.
-            // The hour angle from 12 is (h12 * 30 + m * 0.5).
-            // So South relative to 12 is (h12 * 30 + m * 0.5) / 2.
-            // Since 12 is pointing at the sun, South relative to the sun is -(h12 * 30 + m * 0.5) / 2.
-            // On our phone, the sun is at 180 deg.
-            // So South relative to the phone's top is 180 - (h12 * 30 + m * 0.5) / 2.
-            // And North relative to the phone's top is 180 - (h12 * 30 + m * 0.5) / 2 + 180
-            // = 360 - (h12 * 30 + m * 0.5) / 2.
-            // Let's use this direct derivation.
-            val angleFrom12 = (h12 * 30.0 + m * 0.5)
-            (360.0 - angleFrom12 / 2.0) % 360.0
+            // In Northern Hemisphere, bisecting the smaller angle gives South.
+            // So North is opposite (add 180).
+            (bisectorOfSmallerAngle + 180.0) % 360.0
         } else {
-            // In the Southern Hemisphere, North is halfway between the hour hand and 12 o'clock.
-            val angleFrom12 = (h12 * 30.0 + m * 0.5)
-            (180.0 - angleFrom12 / 2.0 + 360.0) % 360.0
+            // In the Southern Hemisphere, bisecting the smaller angle gives North.
+            bisectorOfSmallerAngle
         }
 
         return relativeNorth

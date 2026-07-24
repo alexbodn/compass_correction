@@ -111,10 +111,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     // Lifecycle observer to handle pause/resume for location updates
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, hasLocationPermission, useGNSS) {
+    DisposableEffect(lifecycleOwner, hasLocationPermission) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                if (hasLocationPermission && useGNSS) {
+                if (hasLocationPermission) {
                     locationHelper.startLocationUpdates { loc ->
                         location = loc
                     }
@@ -126,7 +126,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         lifecycleOwner.lifecycle.addObserver(observer)
 
         // Initial setup
-        if (hasLocationPermission && useGNSS) {
+        if (hasLocationPermission) {
             locationHelper.startLocationUpdates { loc ->
                 location = loc
             }
@@ -147,6 +147,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val solarNorthRelativeAzimuth: Float
     val compassAzimuth: Float
 
+    if (location != null) {
+        val declination = SensorHelper.getDeclination(location!!.latitude, location!!.longitude, location!!.altitude, currentTimeMillis)
+        compassAzimuth = if (useTrueNorth) (magneticAzimuth + declination + 360f) % 360f else magneticAzimuth
+    } else {
+        compassAzimuth = magneticAzimuth
+    }
+
     if (useGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
@@ -159,14 +166,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         // So absolute device heading = solarAbsoluteAzimuth - 180
         // We want the relative angle of North (0) compared to device top:
         solarNorthRelativeAzimuth = (180f - solarAbsoluteAzimuth + 360f) % 360f
-
-        val declination = SensorHelper.getDeclination(lat, lon, location!!.altitude, currentTimeMillis)
-        compassAzimuth = if (useTrueNorth) (magneticAzimuth + declination + 360f) % 360f else magneticAzimuth
-
     } else {
         isNight = SunPositionCalculator.isNightFallback()
         solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere, isDstActive).toFloat()
-        compassAzimuth = magneticAzimuth
     }
 
     // Difference between magnetic compass north and solar calculated north
