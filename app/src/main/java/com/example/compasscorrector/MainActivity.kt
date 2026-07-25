@@ -94,6 +94,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var useGNSS by remember { mutableStateOf(false) }
     var useTrueNorth by remember { mutableStateOf(false) }
     var isNorthernHemisphere by remember { mutableStateOf(true) } // For manual fallback
+    var useTimezoneSpaFallback by remember { mutableStateOf(true) }
 
     // Auto-detect DST
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
@@ -168,7 +169,11 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         solarNorthRelativeAzimuth = (180f - solarAbsoluteAzimuth + 360f) % 360f
     } else {
         isNight = SunPositionCalculator.isNightFallback()
-        solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere, isDstActive).toFloat()
+        if (useTimezoneSpaFallback) {
+            solarNorthRelativeAzimuth = SunPositionCalculator.calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere).toFloat()
+        } else {
+            solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere, isDstActive).toFloat()
+        }
     }
 
     // Difference between magnetic compass north and solar calculated north
@@ -319,8 +324,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             val stdH = stdCal.get(Calendar.HOUR)
                             val stdM = stdCal.get(Calendar.MINUTE)
 
-                            val h = if (isDstActive && (!useGNSS || location == null)) stdH else localH
-                            val m = if (isDstActive && (!useGNSS || location == null)) stdM else localM
+                            // If using the classic watch bisect fallback with DST, we rotate to the standard hour.
+                            // If using Timezone SPA, or GNSS, we just point the local hour hand at the sun.
+                            val useStdHandForRotation = isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback
+
+                            val h = if (useStdHandForRotation) stdH else localH
+                            val m = if (useStdHandForRotation) stdM else localM
 
                             // Calculate normal hour angle relative to top (12 o'clock)
                             val normalHourAngle = h * 30f + m * 0.5f
@@ -344,7 +353,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                                 // Draw hands inside the rotated context.
                                 val minuteAngleInside = Math.toRadians(-90.0 + localM * 6).toFloat()
 
-                                if (isDstActive && (!useGNSS || location == null)) {
+                                if (isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback) {
                                     // If fallback calculation with DST is active, show the standard hour hand (dotted) and the local hour hand (solid)
                                     val stdHourAngleInside = Math.toRadians(-90.0 + (stdH * 30 + stdM * 0.5)).toFloat()
                                     val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
@@ -450,11 +459,22 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
-                        checked = isDstActive,
-                        onCheckedChange = { isDstActive = it },
+                        checked = useTimezoneSpaFallback,
+                        onCheckedChange = { useTimezoneSpaFallback = it },
                         colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.Black, checkmarkColor = Color.White)
                     )
-                    Text("DST Active (Daylight Saving Time)", color = Color.Black)
+                    Text("Use Timezone-Estimated SPA Fallback", color = Color.Black)
+                }
+
+                if (!useTimezoneSpaFallback) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = isDstActive,
+                            onCheckedChange = { isDstActive = it },
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.Black, checkmarkColor = Color.White)
+                        )
+                        Text("DST Active (Daylight Saving Time)", color = Color.Black)
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Select Hemisphere:", color = Color.Black)

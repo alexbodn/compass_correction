@@ -177,6 +177,29 @@ object SunPositionCalculator {
         return hour >= 18 || hour < 6
     }
 
+    // Calculates fallback relative north using a Timezone-estimated SPA.
+    // This estimates longitude based on the timezone standard meridian, and uses a generic latitude.
+    fun calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Double {
+        val tzOffsetMillis = TimeZone.getDefault().getOffset(currentTimeMillis).toLong()
+        val tzOffsetHours = tzOffsetMillis / 3600000.0
+
+        // Estimate longitude: 15 degrees per hour of timezone offset.
+        val estLongitude = tzOffsetHours * 15.0
+
+        // Estimate latitude: Generic mid-latitude (45 degrees) based on hemisphere selection.
+        val estLatitude = if (isNorthernHemisphere) 45.0 else -45.0
+
+        // Calculate true astronomical solar azimuth using the exact SPA.
+        val solarAbsoluteAzimuth = calculateSolarAzimuth(estLatitude, estLongitude, currentTimeMillis)
+
+        // As before, the device points its bottom (180 deg) at the sun.
+        // Device heading = solarAbsoluteAzimuth - 180
+        // Relative angle to North (0) compared to device top:
+        val relativeNorth = (180.0 - solarAbsoluteAzimuth + 360.0) % 360.0
+
+        return relativeNorth
+    }
+
     // Calculates fallback relative north using the analog watch bisect method.
     // The user points the *bottom* of the phone at the sun (since the sun icon is at the bottom).
     // This is equivalent to pointing the hour hand of the *upside down* clock at the sun.
