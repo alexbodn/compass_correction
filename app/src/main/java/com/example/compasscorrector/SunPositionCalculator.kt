@@ -180,7 +180,7 @@ object SunPositionCalculator {
     // Calculates fallback relative north using a Timezone-estimated SPA.
     // This estimates longitude based on the timezone standard meridian, and uses a generic latitude.
     fun calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Double {
-        val tzOffsetMillis = TimeZone.getDefault().getOffset(currentTimeMillis).toLong()
+        val tzOffsetMillis = TimeZone.getDefault().rawOffset.toLong()
         val tzOffsetHours = tzOffsetMillis / 3600000.0
 
         // Estimate longitude: 15 degrees per hour of timezone offset.

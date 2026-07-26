@@ -235,26 +235,19 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             Text(debugText, color = Color.Black.copy(alpha=0.5f), fontSize = 10.sp)
         }
 
-        Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(16.dp))
+        Box(modifier = Modifier.fillMaxSize()) {
 
-            if (isNight) {
-                Text("Warning: It is night time. Sun features disabled.", color = Color.Red, fontSize = 16.sp)
-                Spacer(modifier = Modifier.weight(1f))
-            } else {
-
-                Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Unified central dial
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
+            // Central Dial fixed in absolute center
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isNight) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Warning: Sun is below horizon.", color = Color.Red, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Solar calculations disabled.", color = Color.Black, fontSize = 16.sp)
+                    }
+                } else {
                     Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
 
@@ -409,86 +402,126 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 }
             }
 
-            // Controls
-            Spacer(modifier = Modifier.height(32.dp))
-
-            if (hasLocationPermission) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = useGNSS,
-                        onCheckedChange = { useGNSS = it },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color.Blue,
-                            uncheckedColor = Color.Black,
-                            checkmarkColor = Color.White
-                        )
-                    )
-                    Text("Use GNSS for Solar North", color = Color.Black)
+            // Foreground Layout for Titles and Controls
+            Column(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Compass Corrector", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                if (!isNight) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
 
-                // Enable True North if we actually have a location, regardless of solar calculation setting
-                val trueNorthEnabled = location != null
+                Spacer(modifier = Modifier.weight(1f))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = useTrueNorth,
-                        onCheckedChange = { useTrueNorth = it },
-                        enabled = trueNorthEnabled,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color.Blue,
-                            uncheckedColor = Color.Black,
-                            checkmarkColor = Color.White,
-                            disabledUncheckedColor = Color.Gray,
-                            disabledCheckedColor = Color.Gray
-                        )
-                    )
-                    Text(
-                        "Adjust Magnetic to True North",
-                        color = if (trueNorthEnabled) Color.Black else Color.Gray
-                    )
-                }
-
-                if (location == null) {
-                    Text("Warning: Magnetic North is not adjusted to True North.", color = Color.Red)
-                }
-            } else {
-                Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red)
-            }
-
-            if (!useGNSS || !hasLocationPermission || location == null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = useTimezoneSpaFallback,
-                        onCheckedChange = { useTimezoneSpaFallback = it },
-                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.Black, checkmarkColor = Color.White)
-                    )
-                    Text("Use Timezone-Estimated SPA Fallback", color = Color.Black)
-                }
-
-                if (!useTimezoneSpaFallback) {
+                // Controls at bottom
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // GNSS Checkbox
+                    val gnssEnabled = hasLocationPermission
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
-                            checked = isDstActive,
-                            onCheckedChange = { isDstActive = it },
-                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = Color.Black, checkmarkColor = Color.White)
+                            checked = useGNSS && gnssEnabled,
+                            onCheckedChange = { useGNSS = it },
+                            enabled = gnssEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = Color.Black,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
                         )
-                        Text("DST Active (Daylight Saving Time)", color = Color.Black)
+                        Text("Use GNSS for Solar North", color = if (gnssEnabled) Color.Black else Color.Gray)
                     }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Select Hemisphere:", color = Color.Black)
-                // Hemisphere selection (Simple two buttons as a globe)
-                Row {
-                    Button(
-                        onClick = { isNorthernHemisphere = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray)
-                    ) { Text("Northern") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = { isNorthernHemisphere = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray)
-                    ) { Text("Southern") }
+
+                    // True North Checkbox
+                    val trueNorthEnabled = hasLocationPermission && location != null
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = useTrueNorth && trueNorthEnabled,
+                            onCheckedChange = { useTrueNorth = it },
+                            enabled = trueNorthEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = Color.Black,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
+                        )
+                        Text("Adjust Magnetic to True North", color = if (trueNorthEnabled) Color.Black else Color.Gray)
+                    }
+
+                    if (location == null) {
+                        Text("Warning: Magnetic North not adjusted to True North.", color = Color.Red, fontSize = 12.sp)
+                    }
+                    if (!hasLocationPermission) {
+                        Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red, fontSize = 12.sp)
+                    }
+
+                    // Fallback Checkboxes
+                    val isFallbackActive = !useGNSS || !hasLocationPermission || location == null
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = useTimezoneSpaFallback && isFallbackActive,
+                            onCheckedChange = { useTimezoneSpaFallback = it },
+                            enabled = isFallbackActive,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = Color.Black,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
+                        )
+                        Text("Use Timezone-Estimated SPA Fallback", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
+                    }
+
+                    val isDstCheckboxEnabled = isFallbackActive && !useTimezoneSpaFallback
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = isDstActive && isDstCheckboxEnabled,
+                            onCheckedChange = { isDstActive = it },
+                            enabled = isDstCheckboxEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = Color.Black,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
+                        )
+                        Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Hemisphere: ", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
+                        Button(
+                            onClick = { isNorthernHemisphere = true },
+                            enabled = isFallbackActive,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray,
+                                disabledContainerColor = Color.LightGray
+                            ),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("N") }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { isNorthernHemisphere = false },
+                            enabled = isFallbackActive,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray,
+                                disabledContainerColor = Color.LightGray
+                            ),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("S") }
+                    }
                 }
             }
         }
