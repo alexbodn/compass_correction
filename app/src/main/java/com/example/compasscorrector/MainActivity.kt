@@ -155,10 +155,15 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         compassAzimuth = magneticAzimuth
     }
 
+    var nightWarningMsg: String? = null
+
     if (useGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
         isNight = SunPositionCalculator.isNight(lat, lon, currentTimeMillis)
+        if (isNight) {
+            nightWarningMsg = "Warning: Sun is below horizon."
+        }
 
         // Exact solar absolute azimuth
         val solarAbsoluteAzimuth = SunPositionCalculator.calculateSolarAzimuth(lat, lon, currentTimeMillis).toFloat()
@@ -168,7 +173,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         // We want the relative angle of North (0) compared to device top:
         solarNorthRelativeAzimuth = (180f - solarAbsoluteAzimuth + 360f) % 360f
     } else {
-        isNight = SunPositionCalculator.isNightFallback()
+        isNight = SunPositionCalculator.isNightFallback(currentTimeMillis, isNorthernHemisphere)
+        if (isNight) {
+            nightWarningMsg = "Warning: Sun may be below horizon."
+        }
         if (useTimezoneSpaFallback) {
             solarNorthRelativeAzimuth = SunPositionCalculator.calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere).toFloat()
         } else {
@@ -242,22 +250,16 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                if (isNight) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Warning: Sun is below horizon.", color = Color.Red, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("Solar calculations disabled.", color = Color.Black, fontSize = 16.sp)
-                    }
-                } else {
-                    Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
 
-                            // Central triangle (bigger and sharper)
-                            val path = Path().apply {
-                                moveTo(size.width / 2, size.height * 0.1f)
-                                lineTo(size.width * 0.85f, size.height * 0.9f)
-                                lineTo(size.width * 0.15f, size.height * 0.9f)
-                                close()
-                            }
+                        // Central triangle (bigger and sharper)
+                        val path = Path().apply {
+                            moveTo(size.width / 2, size.height * 0.1f)
+                            lineTo(size.width * 0.85f, size.height * 0.9f)
+                            lineTo(size.width * 0.15f, size.height * 0.9f)
+                            close()
+                        }
                             drawPath(path, Color.Gray.copy(alpha = 0.5f))
 
                             // Half Sun at bottom base
@@ -390,13 +392,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                                 drawLine(
                                     color = Color.Black,
                                     start = dialCenter,
-                                    end = Offset(
-                                        dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
-                                        dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
-                                    ),
-                                    strokeWidth = 6f
-                                )
-                            }
+                                end = Offset(
+                                    dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
+                                    dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
+                                ),
+                                strokeWidth = 6f
+                            )
                         }
                     }
                 }
@@ -408,11 +409,15 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("Compass Corrector", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                if (!isNight) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+                if (nightWarningMsg != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(nightWarningMsg, color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
                 Spacer(modifier = Modifier.weight(1f))
 

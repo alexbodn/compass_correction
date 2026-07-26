@@ -170,11 +170,17 @@ object SunPositionCalculator {
     }
 
     // Fallback night check when location is unknown
-    fun isNightFallback(): Boolean {
-        val cal = Calendar.getInstance()
-        val hour = cal.get(Calendar.HOUR_OF_DAY)
-        // Assume night between 18:00 and 06:00
-        return hour >= 18 || hour < 6
+    fun isNightFallback(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Boolean {
+        val tzOffsetMillis = TimeZone.getDefault().rawOffset.toLong()
+        val tzOffsetHours = tzOffsetMillis / 3600000.0
+
+        // Estimate longitude: 15 degrees per hour of timezone offset.
+        val estLongitude = tzOffsetHours * 15.0
+
+        // Estimate latitude: Generic mid-latitude (45 degrees) based on hemisphere selection.
+        val estLatitude = if (isNorthernHemisphere) 45.0 else -45.0
+
+        return isNight(estLatitude, estLongitude, currentTimeMillis)
     }
 
     // Calculates fallback relative north using a Timezone-estimated SPA.
