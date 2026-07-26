@@ -260,19 +260,46 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             lineTo(size.width * 0.15f, size.height * 0.9f)
                             close()
                         }
-                            drawPath(path, Color.Gray.copy(alpha = 0.5f))
+                        drawPath(path, Color.Red) // Vivid red
 
-                            // Half Sun at bottom base
-                            drawArc(
-                                color = Color(0xFFFFD700), // Gold/Yellow
-                                startAngle = 180f,
-                                sweepAngle = 180f,
-                                useCenter = true,
-                                topLeft = Offset(size.width / 2 - 32f, size.height * 0.9f - 32f),
-                                size = androidx.compose.ui.geometry.Size(64f, 64f)
+                        // Half Sun at bottom base (with rays)
+                        val sunCenter = Offset(size.width / 2, size.height * 0.9f)
+                        val sunRadius = 32f
+
+                        // Rays (like ☀️)
+                        val rayLength = 12f
+                        val rayOffset = 6f
+                        for (i in 0..6) {
+                            val angle = 180f + (180f / 6) * i
+                            val rad = Math.toRadians(angle.toDouble()).toFloat()
+                            val startRay = Offset(
+                                sunCenter.x + (sunRadius + rayOffset) * cos(rad),
+                                sunCenter.y + (sunRadius + rayOffset) * sin(rad)
                             )
+                            val endRay = Offset(
+                                sunCenter.x + (sunRadius + rayOffset + rayLength) * cos(rad),
+                                sunCenter.y + (sunRadius + rayOffset + rayLength) * sin(rad)
+                            )
+                            drawLine(
+                                color = Color(0xFFFF9800), // Orange/Gold rays
+                                start = startRay,
+                                end = endRay,
+                                strokeWidth = 6f,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        }
 
-                            // Outer unified dial for indicators
+                        // Sun Body
+                        drawArc(
+                            color = Color(0xFFFFD700), // Gold/Yellow
+                            startAngle = 180f,
+                            sweepAngle = 180f,
+                            useCenter = true,
+                            topLeft = Offset(sunCenter.x - sunRadius, sunCenter.y - sunRadius),
+                            size = androidx.compose.ui.geometry.Size(sunRadius * 2, sunRadius * 2)
+                        )
+
+                        // Outer unified dial for indicators
                             val dialCenter = Offset(size.width / 2, size.height * 0.5f)
                             val outerRadius = size.width * 0.45f
                             drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
