@@ -144,8 +144,6 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val currentTimeMillis = System.currentTimeMillis()
 
     // Calculations
-    val isNight: Boolean
-    val solarNorthRelativeAzimuth: Float
     val compassAzimuth: Float
 
     if (location != null) {
@@ -156,24 +154,18 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     }
 
     var nightWarningMsg: String? = null
-
+    val solarNorthRelativeAzimuth: Float
     if (useGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
-        isNight = SunPositionCalculator.isNight(lat, lon, currentTimeMillis)
+        val isNight = SunPositionCalculator.isNight(lat, lon, currentTimeMillis)
         if (isNight) {
             nightWarningMsg = "Warning: Sun is below horizon."
         }
-
-        // Exact solar absolute azimuth
         val solarAbsoluteAzimuth = SunPositionCalculator.calculateSolarAzimuth(lat, lon, currentTimeMillis).toFloat()
-
-        // The user points the bottom of the device at the sun.
-        // So absolute device heading = solarAbsoluteAzimuth - 180
-        // We want the relative angle of North (0) compared to device top:
         solarNorthRelativeAzimuth = (180f - solarAbsoluteAzimuth + 360f) % 360f
     } else {
-        isNight = SunPositionCalculator.isNightFallback(currentTimeMillis, isNorthernHemisphere)
+        val isNight = SunPositionCalculator.isNightFallback(currentTimeMillis, isNorthernHemisphere)
         if (isNight) {
             nightWarningMsg = "Warning: Sun may be below horizon."
         }
@@ -184,12 +176,34 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         }
     }
 
-    // Difference between magnetic compass north and solar calculated north
+    // --- Moon Azimuth Calculation ---
+    val lunarNorthRelativeAzimuth: Float
+    if (useGNSS && location != null) {
+        val lat = location!!.latitude
+        val lon = location!!.longitude
+        val lunarAbsoluteAzimuth = MoonPositionCalculator.calculateLunarAzimuth(lat, lon, currentTimeMillis).toFloat()
+        lunarNorthRelativeAzimuth = (180f - lunarAbsoluteAzimuth + 360f) % 360f
+    } else {
+        if (useTimezoneSpaFallback) {
+            lunarNorthRelativeAzimuth = MoonPositionCalculator.calculateTimezoneFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere).toFloat()
+        } else {
+            // Analog watch bisect method does not apply to the moon.
+            // When fallback is analog watch, we will just pass 0 or gray it out.
+            lunarNorthRelativeAzimuth = 0f
+        }
+    }
+
     val relativeMagneticNorth = (360f - compassAzimuth) % 360f
 
-    var diff = solarNorthRelativeAzimuth - relativeMagneticNorth
-    if (diff < -180f) diff += 360f
-    if (diff > 180f) diff -= 360f
+    var solarDiff = solarNorthRelativeAzimuth - relativeMagneticNorth
+    if (solarDiff < -180f) solarDiff += 360f
+    if (solarDiff > 180f) solarDiff -= 360f
+
+    var lunarDiff = lunarNorthRelativeAzimuth - relativeMagneticNorth
+    if (lunarDiff < -180f) lunarDiff += 360f
+    if (lunarDiff > 180f) lunarDiff -= 360f
+    // If the analog watch fallback is active, we cannot calculate the moon properly.
+    val isLunarAnalogFallbackActive = (!useGNSS || location == null) && !useTimezoneSpaFallback
 
     val textMeasurer = rememberTextMeasurer()
     var selectedTabIndex by remember { mutableStateOf(0) }
@@ -217,7 +231,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
             // Correction Angle line is always visible at the top
             Spacer(modifier = Modifier.height(8.dp))
-            Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (selectedTabIndex == 1 && isLunarAnalogFallbackActive) {
+                Text("Correction Angle: N/A", color = Color.Gray, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            } else {
+                val currentDiff = if (selectedTabIndex == 0) solarDiff else lunarDiff
+                Text(String.format("Correction Angle: %.1f°", currentDiff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            }
 
             TabRow(selectedTabIndex = selectedTabIndex) {
                 tabs.forEachIndexed { index, title ->
@@ -231,86 +250,155 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
             Box(modifier = Modifier.fillMaxSize().weight(1f)) {
                 if (selectedTabIndex == 0) {
-                    // SOLAR TAB CONTENT
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        // Human shadow background silhouette
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val path = Path().apply {
-                                // Lower body / legs
-                                moveTo(size.width * 0.35f, size.height)
-                                lineTo(size.width * 0.65f, size.height)
-                                lineTo(size.width * 0.55f, size.height * 0.5f)
-                                lineTo(size.width * 0.45f, size.height * 0.5f)
-                                close()
+                    CelestialToolTab(
+                        isLunar = false,
+                        relativeCelestialNorth = solarNorthRelativeAzimuth,
+                        relativeMagneticNorth = relativeMagneticNorth,
+                        currentTimeMillis = currentTimeMillis,
+                        location = location,
+                        magneticAzimuth = magneticAzimuth,
+                        useGNSS = useGNSS,
+                        onUseGNSSChange = { useGNSS = it },
+                        useTrueNorth = useTrueNorth,
+                        onUseTrueNorthChange = { useTrueNorth = it },
+                        hasLocationPermission = hasLocationPermission,
+                        useTimezoneSpaFallback = useTimezoneSpaFallback,
+                        onUseTimezoneSpaFallbackChange = { useTimezoneSpaFallback = it },
+                        isDstActive = isDstActive,
+                        onIsDstActiveChange = { isDstActive = it },
+                        isNorthernHemisphere = isNorthernHemisphere,
+                        onIsNorthernHemisphereChange = { isNorthernHemisphere = it },
+                        nightWarningMsg = nightWarningMsg,
+                        textMeasurer = textMeasurer,
+                        isLunarAnalogFallbackActive = false
+                    )
+                } else if (selectedTabIndex == 1) {
+                    CelestialToolTab(
+                        isLunar = true,
+                        relativeCelestialNorth = lunarNorthRelativeAzimuth,
+                        relativeMagneticNorth = relativeMagneticNorth,
+                        currentTimeMillis = currentTimeMillis,
+                        location = location,
+                        magneticAzimuth = magneticAzimuth,
+                        useGNSS = useGNSS,
+                        onUseGNSSChange = { useGNSS = it },
+                        useTrueNorth = useTrueNorth,
+                        onUseTrueNorthChange = { useTrueNorth = it },
+                        hasLocationPermission = hasLocationPermission,
+                        useTimezoneSpaFallback = useTimezoneSpaFallback,
+                        onUseTimezoneSpaFallbackChange = { useTimezoneSpaFallback = it },
+                        isDstActive = isDstActive,
+                        onIsDstActiveChange = { isDstActive = it },
+                        isNorthernHemisphere = isNorthernHemisphere,
+                        onIsNorthernHemisphereChange = { isNorthernHemisphere = it },
+                        nightWarningMsg = null, // No day warning for moon (simplified)
+                        textMeasurer = textMeasurer,
+                        isLunarAnalogFallbackActive = isLunarAnalogFallbackActive
+                    )
+                }
+            } // End of outer tab Box
+        } // End of inner padding Column
+    } // End of Scaffold
+}
 
-                                // Torso and Shoulders
-                                moveTo(size.width * 0.45f, size.height * 0.5f)
-                                lineTo(size.width * 0.55f, size.height * 0.5f)
-                                lineTo(size.width * 0.75f, size.height * 0.3f) // Right shoulder
-                                lineTo(size.width * 0.55f, size.height * 0.28f) // Right neck base
-                                lineTo(size.width * 0.45f, size.height * 0.28f) // Left neck base
-                                lineTo(size.width * 0.25f, size.height * 0.3f) // Left shoulder
-                                close()
+@Composable
+fun CelestialToolTab(
+    isLunar: Boolean,
+    relativeCelestialNorth: Float,
+    relativeMagneticNorth: Float,
+    currentTimeMillis: Long,
+    location: android.location.Location?,
+    magneticAzimuth: Float,
+    useGNSS: Boolean,
+    onUseGNSSChange: (Boolean) -> Unit,
+    useTrueNorth: Boolean,
+    onUseTrueNorthChange: (Boolean) -> Unit,
+    hasLocationPermission: Boolean,
+    useTimezoneSpaFallback: Boolean,
+    onUseTimezoneSpaFallbackChange: (Boolean) -> Unit,
+    isDstActive: Boolean,
+    onIsDstActiveChange: (Boolean) -> Unit,
+    isNorthernHemisphere: Boolean,
+    onIsNorthernHemisphereChange: (Boolean) -> Unit,
+    nightWarningMsg: String?,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    isLunarAnalogFallbackActive: Boolean
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Human shadow background silhouette
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val path = Path().apply {
+                moveTo(size.width * 0.35f, size.height)
+                lineTo(size.width * 0.65f, size.height)
+                lineTo(size.width * 0.55f, size.height * 0.5f)
+                lineTo(size.width * 0.45f, size.height * 0.5f)
+                close()
 
-                                // Head
-                                addOval(androidx.compose.ui.geometry.Rect(
-                                    size.width * 0.35f, size.height * 0.1f,
-                                    size.width * 0.65f, size.height * 0.28f
-                                ))
-                            }
-                            drawPath(path, Color.Black.copy(alpha = 0.15f))
-                        }
+                moveTo(size.width * 0.45f, size.height * 0.5f)
+                lineTo(size.width * 0.55f, size.height * 0.5f)
+                lineTo(size.width * 0.75f, size.height * 0.3f)
+                lineTo(size.width * 0.55f, size.height * 0.28f)
+                lineTo(size.width * 0.45f, size.height * 0.28f)
+                lineTo(size.width * 0.25f, size.height * 0.3f)
+                close()
 
-                        // Debug Text at very top left
-                        Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
-                            val debugText = """
-                                Loc: ${if (location != null) "%.4f, %.4f".format(location!!.latitude, location!!.longitude) else "null"}
-                                Magnetic Az: %.1f
-                                True North: $useTrueNorth
-                                Solar Az (Rel): %.1f
-                                DST: $isDstActive
-                                Hemi: ${if(isNorthernHemisphere) "N" else "S"}
-                            """.trimIndent().format(magneticAzimuth, solarNorthRelativeAzimuth)
-                            Text(debugText, color = Color.Black.copy(alpha=0.5f), fontSize = 10.sp)
-                        }
+                addOval(androidx.compose.ui.geometry.Rect(
+                    size.width * 0.35f, size.height * 0.1f,
+                    size.width * 0.65f, size.height * 0.28f
+                ))
+            }
+            drawPath(path, Color.Black.copy(alpha = 0.15f))
+        }
 
-                        // Central Dial fixed in absolute center
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
+        // Debug Text at very top left
+        Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
+            val debugText = """
+                Loc: ${if (location != null) "%.4f, %.4f".format(location!!.latitude, location!!.longitude) else "null"}
+                Magnetic Az: %.1f
+                True North: $useTrueNorth
+                Rel ${if (isLunar) "Lunar" else "Solar"} Az: %.1f
+                DST: $isDstActive
+                Hemi: ${if (isNorthernHemisphere) "N" else "S"}
+            """.trimIndent().format(magneticAzimuth, relativeCelestialNorth)
+            Text(debugText, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
+        }
 
-                        // Central triangle (bigger and sharper)
-                        val path = Path().apply {
-                            moveTo(size.width / 2, size.height * 0.1f)
-                            lineTo(size.width * 0.85f, size.height * 0.9f)
-                            lineTo(size.width * 0.15f, size.height * 0.9f)
-                            close()
-                        }
-                        drawPath(path, Color.Red) // Vivid red
+        // Central Dial fixed in absolute center
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
 
-                        // Half Sun at bottom base (with rays)
-                        val sunCenter = Offset(size.width / 2, size.height * 0.9f)
-                        val sunRadius = 32f
+                    val path = Path().apply {
+                        moveTo(size.width / 2, size.height * 0.1f)
+                        lineTo(size.width * 0.85f, size.height * 0.9f)
+                        lineTo(size.width * 0.15f, size.height * 0.9f)
+                        close()
+                    }
+                    drawPath(path, Color.Red)
 
-                        // Rays (like ☀️)
+                    val centerIconBase = Offset(size.width / 2, size.height * 0.9f)
+                    val radius = 32f
+
+                    if (!isLunar) {
+                        // Sun Rays
                         val rayLength = 12f
                         val rayOffset = 6f
                         for (i in 0..6) {
                             val angle = 180f + (180f / 6) * i
                             val rad = Math.toRadians(angle.toDouble()).toFloat()
                             val startRay = Offset(
-                                sunCenter.x + (sunRadius + rayOffset) * cos(rad),
-                                sunCenter.y + (sunRadius + rayOffset) * sin(rad)
+                                centerIconBase.x + (radius + rayOffset) * cos(rad),
+                                centerIconBase.y + (radius + rayOffset) * sin(rad)
                             )
                             val endRay = Offset(
-                                sunCenter.x + (sunRadius + rayOffset + rayLength) * cos(rad),
-                                sunCenter.y + (sunRadius + rayOffset + rayLength) * sin(rad)
+                                centerIconBase.x + (radius + rayOffset + rayLength) * cos(rad),
+                                centerIconBase.y + (radius + rayOffset + rayLength) * sin(rad)
                             )
                             drawLine(
-                                color = Color(0xFFFF9800), // Orange/Gold rays
+                                color = Color(0xFFFF9800),
                                 start = startRay,
                                 end = endRay,
                                 strokeWidth = 6f,
@@ -320,280 +408,269 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
                         // Sun Body
                         drawArc(
-                            color = Color(0xFFFFD700), // Gold/Yellow
+                            color = Color(0xFFFFD700),
                             startAngle = 180f,
                             sweepAngle = 180f,
                             useCenter = true,
-                            topLeft = Offset(sunCenter.x - sunRadius, sunCenter.y - sunRadius),
-                            size = androidx.compose.ui.geometry.Size(sunRadius * 2, sunRadius * 2)
+                            topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
+                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
                         )
+                    } else {
+                        // Pale Yellow Moon Icon
+                        drawArc(
+                            color = Color(0xFFFFF59D), // Pale Yellow
+                            startAngle = 180f,
+                            sweepAngle = 180f,
+                            useCenter = true,
+                            topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
+                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+                        )
+                    }
 
-                        // Outer unified dial for indicators
-                            val dialCenter = Offset(size.width / 2, size.height * 0.5f)
-                            val outerRadius = size.width * 0.45f
-                            drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
+                    val dialCenter = Offset(size.width / 2, size.height * 0.5f)
+                    val outerRadius = size.width * 0.45f
+                    drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
 
-                            // Draw Magnetic North Indicator
-                            rotate(relativeMagneticNorth, dialCenter) {
-                                drawLine(
-                                    color = Color.Red,
-                                    start = dialCenter,
-                                    end = Offset(dialCenter.x, dialCenter.y - outerRadius),
-                                    strokeWidth = 10f
-                                )
-                                drawLine(
-                                    color = Color.Blue,
-                                    start = dialCenter,
-                                    end = Offset(dialCenter.x, dialCenter.y + outerRadius),
-                                    strokeWidth = 10f
-                                )
-                            }
+                    rotate(relativeMagneticNorth, dialCenter) {
+                        drawLine(
+                            color = Color.Red,
+                            start = dialCenter,
+                            end = Offset(dialCenter.x, dialCenter.y - outerRadius),
+                            strokeWidth = 10f
+                        )
+                        drawLine(
+                            color = Color.Blue,
+                            start = dialCenter,
+                            end = Offset(dialCenter.x, dialCenter.y + outerRadius),
+                            strokeWidth = 10f
+                        )
+                    }
 
-                            // Draw Solar North Indicator
-                            rotate(solarNorthRelativeAzimuth, dialCenter) {
-                                drawLine(
-                                    color = Color(0xFFFFD700), // Gold/Yellow
-                                    start = dialCenter,
-                                    end = Offset(dialCenter.x, dialCenter.y - outerRadius),
-                                    strokeWidth = 10f
-                                )
-                            }
-
-                            // Rotating watch dial (inner)
-                            val clockRadius = size.width * 0.25f
-                            drawCircle(Color.White, radius = clockRadius, center = dialCenter)
-
-                            val localCal = Calendar.getInstance()
-
-                            val localH = localCal.get(Calendar.HOUR)
-                            val localM = localCal.get(Calendar.MINUTE)
-
-                            val stdCal = Calendar.getInstance()
-                            if (isDstActive) {
-                                stdCal.add(Calendar.HOUR_OF_DAY, -1)
-                            }
-                            val stdH = stdCal.get(Calendar.HOUR)
-                            val stdM = stdCal.get(Calendar.MINUTE)
-
-                            // If using the classic watch bisect fallback with DST, we rotate to the standard hour.
-                            // If using Timezone SPA, or GNSS, we just point the local hour hand at the sun.
-                            val useStdHandForRotation = isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback
-
-                            val h = if (useStdHandForRotation) stdH else localH
-                            val m = if (useStdHandForRotation) stdM else localM
-
-                            // Calculate normal hour angle relative to top (12 o'clock)
-                            val normalHourAngle = h * 30f + m * 0.5f
-
-                            // We want the primary hour hand to point straight down (towards the sun at bottom).
-                            val dialRotation = 180f - normalHourAngle
-
-                            rotate(dialRotation, dialCenter) {
-                                val textStyle = TextStyle(color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                val offset12 = textMeasurer.measure("12", textStyle)
-                                val offset3 = textMeasurer.measure("3", textStyle)
-                                val offset6 = textMeasurer.measure("6", textStyle)
-                                val offset9 = textMeasurer.measure("9", textStyle)
-
-                                // Draw numbers
-                                drawText(textMeasurer, "12", dialCenter + Offset(-offset12.size.width/2f, -clockRadius + 8f), style = textStyle)
-                                drawText(textMeasurer, "6", dialCenter + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 8f), style = textStyle)
-                                drawText(textMeasurer, "3", dialCenter + Offset(clockRadius - offset3.size.width - 8f, -offset3.size.height/2f), style = textStyle)
-                                drawText(textMeasurer, "9", dialCenter + Offset(-clockRadius + 8f, -offset9.size.height/2f), style = textStyle)
-
-                                // Draw hands inside the rotated context.
-                                val minuteAngleInside = Math.toRadians(-90.0 + localM * 6).toFloat()
-
-                                if (isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback) {
-                                    // If fallback calculation with DST is active, show the standard hour hand (dotted) and the local hour hand (solid)
-                                    val stdHourAngleInside = Math.toRadians(-90.0 + (stdH * 30 + stdM * 0.5)).toFloat()
-                                    val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
-
-                                    // Draw local hour hand (solid)
-                                    drawLine(
-                                        color = Color.Black,
-                                        start = dialCenter,
-                                        end = Offset(
-                                            dialCenter.x + clockRadius * 0.6f * cos(localHourAngleInside),
-                                            dialCenter.y + clockRadius * 0.6f * sin(localHourAngleInside)
-                                        ),
-                                        strokeWidth = 10f
-                                    )
-
-                                    // Draw standard hour hand (dotted)
-                                    drawLine(
-                                        color = Color.Black,
-                                        start = dialCenter,
-                                        end = Offset(
-                                            dialCenter.x + clockRadius * 0.6f * cos(stdHourAngleInside),
-                                            dialCenter.y + clockRadius * 0.6f * sin(stdHourAngleInside)
-                                        ),
-                                        strokeWidth = 10f,
-                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                                    )
-                                } else {
-                                    // Draw primary hour hand
-                                    val hourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
-                                    drawLine(
-                                        color = Color.Black,
-                                        start = dialCenter,
-                                        end = Offset(
-                                            dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
-                                            dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
-                                        ),
-                                        strokeWidth = 10f
-                                    )
-                                }
-
-                                drawLine(
-                                    color = Color.Black,
-                                    start = dialCenter,
-                                end = Offset(
-                                    dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
-                                    dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
-                                ),
-                                strokeWidth = 6f
+                    if (!isLunarAnalogFallbackActive) {
+                        rotate(relativeCelestialNorth, dialCenter) {
+                            drawLine(
+                                color = if (isLunar) Color(0xFF9E9E9E) else Color(0xFFFFA500),
+                                start = dialCenter,
+                                end = Offset(dialCenter.x, dialCenter.y - outerRadius),
+                                strokeWidth = 10f
                             )
                         }
+                    }
+
+                    val clockRadius = outerRadius * 0.7f
+                    drawCircle(Color.White, radius = clockRadius, center = dialCenter)
+                    drawCircle(Color.Black, radius = clockRadius, center = dialCenter, style = Stroke(width = 2f))
+
+                    val cal = Calendar.getInstance()
+                    cal.timeInMillis = currentTimeMillis
+                    val localH = cal.get(Calendar.HOUR)
+                    val localM = cal.get(Calendar.MINUTE)
+
+                    val stdCal = Calendar.getInstance()
+                    stdCal.timeInMillis = currentTimeMillis
+                    if (isDstActive) {
+                        stdCal.add(Calendar.HOUR_OF_DAY, -1)
+                    }
+                    val stdH = stdCal.get(Calendar.HOUR)
+                    val stdM = stdCal.get(Calendar.MINUTE)
+
+                    val useStdHandForRotation = isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback
+
+                    val h = if (useStdHandForRotation) stdH else localH
+                    val m = if (useStdHandForRotation) stdM else localM
+
+                    val normalHourAngle = h * 30f + m * 0.5f
+                    val dialRotation = 180f - normalHourAngle
+
+                    rotate(dialRotation, dialCenter) {
+                        val textStyle = TextStyle(color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        val offset12 = textMeasurer.measure("12", textStyle)
+                        val offset3 = textMeasurer.measure("3", textStyle)
+                        val offset6 = textMeasurer.measure("6", textStyle)
+                        val offset9 = textMeasurer.measure("9", textStyle)
+
+                        drawText(textMeasurer, "12", dialCenter + Offset(-offset12.size.width/2f, -clockRadius + 8f), style = textStyle)
+                        drawText(textMeasurer, "6", dialCenter + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 8f), style = textStyle)
+                        drawText(textMeasurer, "3", dialCenter + Offset(clockRadius - offset3.size.width - 8f, -offset3.size.height/2f), style = textStyle)
+                        drawText(textMeasurer, "9", dialCenter + Offset(-clockRadius + 8f, -offset9.size.height/2f), style = textStyle)
+
+                        val minuteAngleInside = Math.toRadians(-90.0 + localM * 6).toFloat()
+
+                        if (isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback) {
+                            val stdHourAngleInside = Math.toRadians(-90.0 + (stdH * 30 + stdM * 0.5)).toFloat()
+                            val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+
+                            drawLine(
+                                color = Color.Black,
+                                start = dialCenter,
+                                end = Offset(
+                                    dialCenter.x + clockRadius * 0.6f * cos(localHourAngleInside),
+                                    dialCenter.y + clockRadius * 0.6f * sin(localHourAngleInside)
+                                ),
+                                strokeWidth = 10f
+                            )
+
+                            drawLine(
+                                color = Color.Black,
+                                start = dialCenter,
+                                end = Offset(
+                                    dialCenter.x + clockRadius * 0.6f * cos(stdHourAngleInside),
+                                    dialCenter.y + clockRadius * 0.6f * sin(stdHourAngleInside)
+                                ),
+                                strokeWidth = 10f,
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            )
+                        } else {
+                            val hourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+                            drawLine(
+                                color = Color.Black,
+                                start = dialCenter,
+                                end = Offset(
+                                    dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
+                                    dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
+                                ),
+                                strokeWidth = 10f
+                            )
+                        }
+
+                        drawLine(
+                            color = Color.Black,
+                            start = dialCenter,
+                            end = Offset(
+                                dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
+                                dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
+                            ),
+                            strokeWidth = 6f
+                        )
                     }
                 }
             }
+        }
 
-                        // Foreground Layout for Text/Controls inside Solar Tab
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (nightWarningMsg != null) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(nightWarningMsg, color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            }
+        // Foreground Layout for Text/Controls
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (nightWarningMsg != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(nightWarningMsg, color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+            if (isLunar && isLunarAnalogFallbackActive) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Lunar analog bisect unsupported. Please enable SPA Fallback.", color = Color.Red, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
 
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            val celestialName = if (isLunar) "moon" else "sun"
+            Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
-                            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(1f))
 
-                            // Controls at bottom
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // GNSS Checkbox
-                    val gnssEnabled = hasLocationPermission
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = useGNSS && gnssEnabled,
-                            onCheckedChange = { useGNSS = it },
-                            enabled = gnssEnabled,
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = Color.Blue,
-                                uncheckedColor = Color.Black,
-                                checkmarkColor = Color.White,
-                                disabledUncheckedColor = Color.Gray,
-                                disabledCheckedColor = Color.Gray
-                            )
+            // Controls at bottom
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val gnssEnabled = hasLocationPermission
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = useGNSS && gnssEnabled,
+                        onCheckedChange = onUseGNSSChange,
+                        enabled = gnssEnabled,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,
+                            uncheckedColor = Color.Black,
+                            checkmarkColor = Color.White,
+                            disabledUncheckedColor = Color.Gray,
+                            disabledCheckedColor = Color.Gray
                         )
-                        Text("Use GNSS for Solar North", color = if (gnssEnabled) Color.Black else Color.Gray)
-                    }
-
-                    // True North Checkbox
-                    val trueNorthEnabled = hasLocationPermission && location != null
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = useTrueNorth && trueNorthEnabled,
-                            onCheckedChange = { useTrueNorth = it },
-                            enabled = trueNorthEnabled,
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = Color.Blue,
-                                uncheckedColor = Color.Black,
-                                checkmarkColor = Color.White,
-                                disabledUncheckedColor = Color.Gray,
-                                disabledCheckedColor = Color.Gray
-                            )
-                        )
-                        Text("Adjust Magnetic to True North", color = if (trueNorthEnabled) Color.Black else Color.Gray)
-                    }
-
-                    if (location == null) {
-                        Text("Warning: Magnetic North not adjusted to True North.", color = Color.Red, fontSize = 12.sp)
-                    }
-                    if (!hasLocationPermission) {
-                        Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red, fontSize = 12.sp)
-                    }
-
-                    // Fallback Checkboxes
-                    val isFallbackActive = !useGNSS || !hasLocationPermission || location == null
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = useTimezoneSpaFallback && isFallbackActive,
-                            onCheckedChange = { useTimezoneSpaFallback = it },
-                            enabled = isFallbackActive,
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = Color.Blue,
-                                uncheckedColor = Color.Black,
-                                checkmarkColor = Color.White,
-                                disabledUncheckedColor = Color.Gray,
-                                disabledCheckedColor = Color.Gray
-                            )
-                        )
-                        Text("Use Timezone-Estimated SPA Fallback", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
-                    }
-
-                    val isDstCheckboxEnabled = isFallbackActive && !useTimezoneSpaFallback
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = isDstActive && isDstCheckboxEnabled,
-                            onCheckedChange = { isDstActive = it },
-                            enabled = isDstCheckboxEnabled,
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = Color.Blue,
-                                uncheckedColor = Color.Black,
-                                checkmarkColor = Color.White,
-                                disabledUncheckedColor = Color.Gray,
-                                disabledCheckedColor = Color.Gray
-                            )
-                        )
-                        Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Hemisphere: ", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
-                        Button(
-                            onClick = { isNorthernHemisphere = true },
-                            enabled = isFallbackActive,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray,
-                                disabledContainerColor = Color.LightGray
-                            ),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("N") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = { isNorthernHemisphere = false },
-                            enabled = isFallbackActive,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray,
-                                disabledContainerColor = Color.LightGray
-                            ),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("S") }
-                    }
+                    )
+                    Text("Use GNSS for ${if (isLunar) "Lunar" else "Solar"} North", color = if (gnssEnabled) Color.Black else Color.Gray)
                 }
-            } // End of foreground column
-            } // End of SOLAR TAB inner layout
-                } else if (selectedTabIndex == 1) {
-                    // LUNAR TAB PLACEHOLDER
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Lunar features coming soon...", fontSize = 20.sp, color = Color.Gray)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("☾", fontSize = 48.sp, color = Color.Gray)
-                        }
-                    }
+
+                val trueNorthEnabled = hasLocationPermission && location != null
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = useTrueNorth && trueNorthEnabled,
+                        onCheckedChange = onUseTrueNorthChange,
+                        enabled = trueNorthEnabled,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,
+                            uncheckedColor = Color.Black,
+                            checkmarkColor = Color.White,
+                            disabledUncheckedColor = Color.Gray,
+                            disabledCheckedColor = Color.Gray
+                        )
+                    )
+                    Text("Adjust Magnetic to True North", color = if (trueNorthEnabled) Color.Black else Color.Gray)
                 }
-            } // End of outer tab Box
-        } // End of inner padding Column
-    } // End of Scaffold
+
+                if (location == null) {
+                    Text("Warning: Magnetic North not adjusted to True North.", color = Color.Red, fontSize = 12.sp)
+                }
+                if (!hasLocationPermission) {
+                    Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red, fontSize = 12.sp)
+                }
+
+                val isFallbackActive = !useGNSS || !hasLocationPermission || location == null
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = useTimezoneSpaFallback && isFallbackActive,
+                        onCheckedChange = onUseTimezoneSpaFallbackChange,
+                        enabled = isFallbackActive,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,
+                            uncheckedColor = Color.Black,
+                            checkmarkColor = Color.White,
+                            disabledUncheckedColor = Color.Gray,
+                            disabledCheckedColor = Color.Gray
+                        )
+                    )
+                    Text("Use Timezone-Estimated SPA Fallback", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
+                }
+
+                val isDstCheckboxEnabled = isFallbackActive && !useTimezoneSpaFallback
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = isDstActive && isDstCheckboxEnabled,
+                        onCheckedChange = onIsDstActiveChange,
+                        enabled = isDstCheckboxEnabled,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = Color.Blue,
+                            uncheckedColor = Color.Black,
+                            checkmarkColor = Color.White,
+                            disabledUncheckedColor = Color.Gray,
+                            disabledCheckedColor = Color.Gray
+                        )
+                    )
+                    Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Hemisphere: ", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
+                    Button(
+                        onClick = { onIsNorthernHemisphereChange(true) },
+                        enabled = isFallbackActive,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray,
+                            disabledContainerColor = Color.LightGray
+                        ),
+                        modifier = Modifier.height(36.dp)
+                    ) { Text("N") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onIsNorthernHemisphereChange(false) },
+                        enabled = isFallbackActive,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray,
+                            disabledContainerColor = Color.LightGray
+                        ),
+                        modifier = Modifier.height(36.dp)
+                    ) { Text("S") }
+                }
+            }
+        }
+    }
 }
