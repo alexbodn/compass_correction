@@ -185,10 +185,6 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     }
 
     // Difference between magnetic compass north and solar calculated north
-    // Correction = SolarNorth - CompassNorth
-    var correction = solarNorthRelativeAzimuth - (360f - compassAzimuth) // Wait, compassAzimuth is the device heading relative to North.
-    // If device points North, compassAzimuth = 0. Arrow points straight up.
-    // So relative angle to North is 360 - compassAzimuth.
     val relativeMagneticNorth = (360f - compassAzimuth) % 360f
 
     var diff = solarNorthRelativeAzimuth - relativeMagneticNorth
@@ -196,62 +192,95 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     if (diff > 180f) diff -= 360f
 
     val textMeasurer = rememberTextMeasurer()
+    var selectedTabIndex by remember { mutableStateOf(0) }
+    val tabs = listOf("Solar", "Lunar")
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White) // White background
-    ) {
-        // Human shadow background silhouette
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val path = Path().apply {
-                // Lower body / legs
-                moveTo(size.width * 0.35f, size.height)
-                lineTo(size.width * 0.65f, size.height)
-                lineTo(size.width * 0.55f, size.height * 0.5f)
-                lineTo(size.width * 0.45f, size.height * 0.5f)
-                close()
+    Scaffold(
+        topBar = {
+            @OptIn(ExperimentalMaterial3Api::class)
+            TopAppBar(
+                title = { Text("Compass Corrector", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White)
+                .padding(paddingValues),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
 
-                // Torso and Shoulders
-                moveTo(size.width * 0.45f, size.height * 0.5f)
-                lineTo(size.width * 0.55f, size.height * 0.5f)
-                lineTo(size.width * 0.75f, size.height * 0.3f) // Right shoulder
-                lineTo(size.width * 0.55f, size.height * 0.28f) // Right neck base
-                lineTo(size.width * 0.45f, size.height * 0.28f) // Left neck base
-                lineTo(size.width * 0.25f, size.height * 0.3f) // Left shoulder
-                close()
+            // Correction Angle line is always visible at the top
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
-                // Head
-                addOval(androidx.compose.ui.geometry.Rect(
-                    size.width * 0.35f, size.height * 0.1f,
-                    size.width * 0.65f, size.height * 0.28f
-                ))
+            TabRow(selectedTabIndex = selectedTabIndex) {
+                tabs.forEachIndexed { index, title ->
+                    Tab(
+                        selected = selectedTabIndex == index,
+                        onClick = { selectedTabIndex = index },
+                        text = { Text(title, fontWeight = FontWeight.Bold) }
+                    )
+                }
             }
-            drawPath(path, Color.Black.copy(alpha = 0.15f))
-        }
 
-        // Debug Text at very top left
-        Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
-            val debugText = """
-                Loc: ${if (location != null) "%.4f, %.4f".format(location!!.latitude, location!!.longitude) else "null"}
-                Magnetic Az: %.1f
-                True North: $useTrueNorth
-                Solar Az (Rel): %.1f
-                DST: $isDstActive
-                Hemi: ${if(isNorthernHemisphere) "N" else "S"}
-            """.trimIndent().format(magneticAzimuth, solarNorthRelativeAzimuth)
-            Text(debugText, color = Color.Black.copy(alpha=0.5f), fontSize = 10.sp)
-        }
+            Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                if (selectedTabIndex == 0) {
+                    // SOLAR TAB CONTENT
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Human shadow background silhouette
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val path = Path().apply {
+                                // Lower body / legs
+                                moveTo(size.width * 0.35f, size.height)
+                                lineTo(size.width * 0.65f, size.height)
+                                lineTo(size.width * 0.55f, size.height * 0.5f)
+                                lineTo(size.width * 0.45f, size.height * 0.5f)
+                                close()
 
-        Box(modifier = Modifier.fillMaxSize()) {
+                                // Torso and Shoulders
+                                moveTo(size.width * 0.45f, size.height * 0.5f)
+                                lineTo(size.width * 0.55f, size.height * 0.5f)
+                                lineTo(size.width * 0.75f, size.height * 0.3f) // Right shoulder
+                                lineTo(size.width * 0.55f, size.height * 0.28f) // Right neck base
+                                lineTo(size.width * 0.45f, size.height * 0.28f) // Left neck base
+                                lineTo(size.width * 0.25f, size.height * 0.3f) // Left shoulder
+                                close()
 
-            // Central Dial fixed in absolute center
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                // Head
+                                addOval(androidx.compose.ui.geometry.Rect(
+                                    size.width * 0.35f, size.height * 0.1f,
+                                    size.width * 0.65f, size.height * 0.28f
+                                ))
+                            }
+                            drawPath(path, Color.Black.copy(alpha = 0.15f))
+                        }
+
+                        // Debug Text at very top left
+                        Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
+                            val debugText = """
+                                Loc: ${if (location != null) "%.4f, %.4f".format(location!!.latitude, location!!.longitude) else "null"}
+                                Magnetic Az: %.1f
+                                True North: $useTrueNorth
+                                Solar Az (Rel): %.1f
+                                DST: $isDstActive
+                                Hemi: ${if(isNorthernHemisphere) "N" else "S"}
+                            """.trimIndent().format(magneticAzimuth, solarNorthRelativeAzimuth)
+                            Text(debugText, color = Color.Black.copy(alpha=0.5f), fontSize = 10.sp)
+                        }
+
+                        // Central Dial fixed in absolute center
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
 
                         // Central triangle (bigger and sharper)
                         val path = Path().apply {
@@ -430,25 +459,22 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 }
             }
 
-            // Foreground Layout for Titles and Controls
-            Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("Compass Corrector", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        // Foreground Layout for Text/Controls inside Solar Tab
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            if (nightWarningMsg != null) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(nightWarningMsg, color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
 
-                if (nightWarningMsg != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(nightWarningMsg, color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(String.format("Correction Angle: %.1f°", diff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.weight(1f))
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Controls at bottom
+                            // Controls at bottom
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -555,7 +581,19 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         ) { Text("S") }
                     }
                 }
-            }
-        }
-    }
+            } // End of foreground column
+            } // End of SOLAR TAB inner layout
+                } else if (selectedTabIndex == 1) {
+                    // LUNAR TAB PLACEHOLDER
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Lunar features coming soon...", fontSize = 20.sp, color = Color.Gray)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("☾", fontSize = 48.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            } // End of outer tab Box
+        } // End of inner padding Column
+    } // End of Scaffold
 }
