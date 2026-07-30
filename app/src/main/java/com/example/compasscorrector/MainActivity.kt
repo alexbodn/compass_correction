@@ -164,22 +164,43 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         compassAzimuth = magneticAzimuth
     }
 
-    var nightWarningMsg: String? = null
+    var solarWarningMsg: String? = null
+    var lunarWarningMsg: String? = null
+
+    // Determine visibilities
+    val isSunBelowHorizon = if (solarUseGNSS && location != null) {
+        SunPositionCalculator.isNight(location!!.latitude, location!!.longitude, currentTimeMillis)
+    } else {
+        SunPositionCalculator.isNightFallback(currentTimeMillis, solarIsNorthernHemisphere)
+    }
+
+    val isMoonBelowHorizon = if (lunarUseGNSS && location != null) {
+        MoonPositionCalculator.isMoonBelowHorizon(location!!.latitude, location!!.longitude, currentTimeMillis)
+    } else {
+        MoonPositionCalculator.isMoonBelowHorizonFallback(currentTimeMillis, lunarIsNorthernHemisphere)
+    }
+
+    // Assign recommendations based on opposite body's visibility
+    if (isSunBelowHorizon) {
+        val gnssString = if (solarUseGNSS && location != null) "is" else "may be"
+        solarWarningMsg = "Warning: Sun $gnssString below horizon."
+        if (!isMoonBelowHorizon) {
+            solarWarningMsg += "\nSuggestion: Try the Lunar tab."
+        }
+    }
+    if (isMoonBelowHorizon) {
+        val gnssString = if (lunarUseGNSS && location != null) "is" else "may be"
+        lunarWarningMsg = "Warning: Moon $gnssString below horizon."
+        if (!isSunBelowHorizon) {
+            lunarWarningMsg += "\nSuggestion: Try the Solar tab."
+        }
+    }
+
     var solarNorthRelativeAzimuth: Float
     if (solarUseGNSS && location != null) {
-        val lat = location!!.latitude
-        val lon = location!!.longitude
-        val isNight = SunPositionCalculator.isNight(lat, lon, currentTimeMillis)
-        if (isNight) {
-            nightWarningMsg = "Warning: Sun is below horizon."
-        }
-        val solarAbsoluteAzimuth = SunPositionCalculator.calculateSolarAzimuth(lat, lon, currentTimeMillis).toFloat()
+        val solarAbsoluteAzimuth = SunPositionCalculator.calculateSolarAzimuth(location!!.latitude, location!!.longitude, currentTimeMillis).toFloat()
         solarNorthRelativeAzimuth = (180f - solarAbsoluteAzimuth + 360f) % 360f
     } else {
-        val isNight = SunPositionCalculator.isNightFallback(currentTimeMillis, solarIsNorthernHemisphere)
-        if (isNight) {
-            nightWarningMsg = "Warning: Sun may be below horizon."
-        }
         if (solarUseTimezoneSpaFallback) {
             solarNorthRelativeAzimuth = SunPositionCalculator.calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis, solarIsNorthernHemisphere).toFloat()
         } else {
@@ -193,9 +214,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     // --- Moon Azimuth Calculation ---
     var lunarNorthRelativeAzimuth: Float
     if (lunarUseGNSS && location != null) {
-        val lat = location!!.latitude
-        val lon = location!!.longitude
-        val lunarAbsoluteAzimuth = MoonPositionCalculator.calculateLunarAzimuth(lat, lon, currentTimeMillis).toFloat()
+        val lunarAbsoluteAzimuth = MoonPositionCalculator.calculateLunarAzimuth(location!!.latitude, location!!.longitude, currentTimeMillis).toFloat()
         lunarNorthRelativeAzimuth = (180f - lunarAbsoluteAzimuth + 360f) % 360f
     } else {
         if (lunarUseTimezoneSpaFallback) {
@@ -284,7 +303,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onIsDstActiveChange = { solarIsDstActive = it },
                         isNorthernHemisphere = solarIsNorthernHemisphere,
                         onIsNorthernHemisphereChange = { solarIsNorthernHemisphere = it },
-                        nightWarningMsg = nightWarningMsg,
+                        nightWarningMsg = solarWarningMsg,
                         textMeasurer = textMeasurer,
                         isLunarAnalogFallbackActive = false,
                         pointPeakAtBody = pointPeakAtSolar,
@@ -309,7 +328,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onIsDstActiveChange = { lunarIsDstActive = it },
                         isNorthernHemisphere = lunarIsNorthernHemisphere,
                         onIsNorthernHemisphereChange = { lunarIsNorthernHemisphere = it },
-                        nightWarningMsg = null, // No day warning for moon (simplified)
+                        nightWarningMsg = lunarWarningMsg,
                         textMeasurer = textMeasurer,
                         isLunarAnalogFallbackActive = isLunarAnalogFallbackActive,
                         pointPeakAtBody = pointPeakAtLunar,
@@ -348,28 +367,30 @@ fun CelestialToolTab(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Human shadow background silhouette
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val path = Path().apply {
-                moveTo(size.width * 0.35f, size.height)
-                lineTo(size.width * 0.65f, size.height)
-                lineTo(size.width * 0.55f, size.height * 0.5f)
-                lineTo(size.width * 0.45f, size.height * 0.5f)
-                close()
+        if (!pointPeakAtBody) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val path = Path().apply {
+                    moveTo(size.width * 0.35f, size.height)
+                    lineTo(size.width * 0.65f, size.height)
+                    lineTo(size.width * 0.55f, size.height * 0.5f)
+                    lineTo(size.width * 0.45f, size.height * 0.5f)
+                    close()
 
-                moveTo(size.width * 0.45f, size.height * 0.5f)
-                lineTo(size.width * 0.55f, size.height * 0.5f)
-                lineTo(size.width * 0.75f, size.height * 0.3f)
-                lineTo(size.width * 0.55f, size.height * 0.28f)
-                lineTo(size.width * 0.45f, size.height * 0.28f)
-                lineTo(size.width * 0.25f, size.height * 0.3f)
-                close()
+                    moveTo(size.width * 0.45f, size.height * 0.5f)
+                    lineTo(size.width * 0.55f, size.height * 0.5f)
+                    lineTo(size.width * 0.75f, size.height * 0.3f)
+                    lineTo(size.width * 0.55f, size.height * 0.28f)
+                    lineTo(size.width * 0.45f, size.height * 0.28f)
+                    lineTo(size.width * 0.25f, size.height * 0.3f)
+                    close()
 
-                addOval(androidx.compose.ui.geometry.Rect(
-                    size.width * 0.35f, size.height * 0.1f,
-                    size.width * 0.65f, size.height * 0.28f
-                ))
+                    addOval(androidx.compose.ui.geometry.Rect(
+                        size.width * 0.35f, size.height * 0.1f,
+                        size.width * 0.65f, size.height * 0.28f
+                    ))
+                }
+                drawPath(path, Color.Black.copy(alpha = 0.15f))
             }
-            drawPath(path, Color.Black.copy(alpha = 0.15f))
         }
 
         // Debug Text at very top left
@@ -624,30 +645,49 @@ fun CelestialToolTab(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { onPointPeakChange(!pointPeakAtBody) }
-            ) {
-                Checkbox(
-                    checked = pointPeakAtBody,
-                    onCheckedChange = null,
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = Color.Blue,
-                        uncheckedColor = Color.Black,
-                        checkmarkColor = Color.White
-                    )
-                )
-                val celestialName = if (isLunar) "Moon" else "Sun"
-                Text("Point triangle peak at $celestialName", color = Color.Black, fontWeight = FontWeight.Bold)
-            }
+            val celestialName = if (isLunar) "the Moon" else "the Sun"
 
-            val instructionText = if (pointPeakAtBody) {
-                val celestialName = if (isLunar) "moon" else "sun"
-                "Point the triangle peak at the $celestialName"
-            } else {
-                "Align the triangle base with your shadow"
+            // Dropdown Menu for Alignment Choice
+            var expanded by remember { mutableStateOf(false) }
+
+            Box {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable { expanded = true }
+                        .padding(8.dp)
+                ) {
+                    Text("Point triangle peak at: ", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (pointPeakAtBody) celestialName else "your shadow",
+                        color = Color.Blue,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                    Text(" ▼", color = Color.Black)
+                }
+
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("your shadow") },
+                        onClick = {
+                            onPointPeakChange(false)
+                            expanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(celestialName) },
+                        onClick = {
+                            onPointPeakChange(true)
+                            expanded = false
+                        }
+                    )
+                }
             }
-            Text(instructionText, color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
             Spacer(modifier = Modifier.weight(1f))
 
