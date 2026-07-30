@@ -100,6 +100,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
     var isDstActive by remember { mutableStateOf(defaultDst) }
 
+    // Alignment Preferences
+    var pointPeakAtSolar by remember { mutableStateOf(false) }
+    var pointPeakAtLunar by remember { mutableStateOf(false) }
+
     // Update magnetic azimuth
     DisposableEffect(Unit) {
         sensorHelper.onAzimuthChanged = { azimuth ->
@@ -154,7 +158,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     }
 
     var nightWarningMsg: String? = null
-    val solarNorthRelativeAzimuth: Float
+    var solarNorthRelativeAzimuth: Float
     if (useGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
@@ -175,9 +179,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere, isDstActive).toFloat()
         }
     }
+    if (pointPeakAtSolar) {
+        solarNorthRelativeAzimuth = (solarNorthRelativeAzimuth + 180f) % 360f
+    }
 
     // --- Moon Azimuth Calculation ---
-    val lunarNorthRelativeAzimuth: Float
+    var lunarNorthRelativeAzimuth: Float
     if (useGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
@@ -191,6 +198,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             // When fallback is analog watch, we will just pass 0 or gray it out.
             lunarNorthRelativeAzimuth = 0f
         }
+    }
+    if (pointPeakAtLunar) {
+        lunarNorthRelativeAzimuth = (lunarNorthRelativeAzimuth + 180f) % 360f
     }
 
     val relativeMagneticNorth = (360f - compassAzimuth) % 360f
@@ -270,7 +280,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onIsNorthernHemisphereChange = { isNorthernHemisphere = it },
                         nightWarningMsg = nightWarningMsg,
                         textMeasurer = textMeasurer,
-                        isLunarAnalogFallbackActive = false
+                        isLunarAnalogFallbackActive = false,
+                        pointPeakAtBody = pointPeakAtSolar,
+                        onPointPeakChange = { pointPeakAtSolar = it }
                     )
                 } else if (selectedTabIndex == 1) {
                     CelestialToolTab(
@@ -293,7 +305,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onIsNorthernHemisphereChange = { isNorthernHemisphere = it },
                         nightWarningMsg = null, // No day warning for moon (simplified)
                         textMeasurer = textMeasurer,
-                        isLunarAnalogFallbackActive = isLunarAnalogFallbackActive
+                        isLunarAnalogFallbackActive = isLunarAnalogFallbackActive,
+                        pointPeakAtBody = pointPeakAtLunar,
+                        onPointPeakChange = { pointPeakAtLunar = it }
                     )
                 }
             } // End of outer tab Box
@@ -322,7 +336,9 @@ fun CelestialToolTab(
     onIsNorthernHemisphereChange: (Boolean) -> Unit,
     nightWarningMsg: String?,
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
-    isLunarAnalogFallbackActive: Boolean
+    isLunarAnalogFallbackActive: Boolean,
+    pointPeakAtBody: Boolean,
+    onPointPeakChange: (Boolean) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Human shadow background silhouette
@@ -379,15 +395,21 @@ fun CelestialToolTab(
                     }
                     drawPath(path, Color.Red)
 
-                    val centerIconBase = Offset(size.width / 2, size.height * 0.9f)
+                    val centerIconBase = if (pointPeakAtBody) {
+                        Offset(size.width / 2, size.height * 0.1f)
+                    } else {
+                        Offset(size.width / 2, size.height * 0.9f)
+                    }
                     val radius = 32f
+
+                    val arcStartAngle = if (pointPeakAtBody) 0f else 180f
 
                     if (!isLunar) {
                         // Sun Rays
                         val rayLength = 12f
                         val rayOffset = 6f
                         for (i in 0..6) {
-                            val angle = 180f + (180f / 6) * i
+                            val angle = arcStartAngle + (180f / 6) * i
                             val rad = Math.toRadians(angle.toDouble()).toFloat()
                             val startRay = Offset(
                                 centerIconBase.x + (radius + rayOffset) * cos(rad),
@@ -409,7 +431,7 @@ fun CelestialToolTab(
                         // Sun Body
                         drawArc(
                             color = Color(0xFFFFD700),
-                            startAngle = 180f,
+                            startAngle = arcStartAngle,
                             sweepAngle = 180f,
                             useCenter = true,
                             topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
@@ -419,7 +441,7 @@ fun CelestialToolTab(
                         // Pale Yellow Moon Icon
                         drawArc(
                             color = Color(0xFFFFF59D), // Pale Yellow
-                            startAngle = 180f,
+                            startAngle = arcStartAngle,
                             sweepAngle = 180f,
                             useCenter = true,
                             topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
@@ -480,7 +502,11 @@ fun CelestialToolTab(
                     val m = if (useStdHandForRotation) stdM else localM
 
                     val normalHourAngle = h * 30f + m * 0.5f
-                    val dialRotation = 180f - normalHourAngle
+                    val dialRotation = if (pointPeakAtBody) {
+                        360f - normalHourAngle // Point 12 o'clock hour hand up at peak
+                    } else {
+                        180f - normalHourAngle // Point 12 o'clock hour hand down at base
+                    }
 
                     rotate(dialRotation, dialCenter) {
                         val textStyle = TextStyle(color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -562,8 +588,28 @@ fun CelestialToolTab(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            val celestialName = if (isLunar) "moon" else "sun"
-            Text("Align the triangle base with your shadow", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = pointPeakAtBody,
+                    onCheckedChange = onPointPeakChange,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = Color.Blue,
+                        uncheckedColor = Color.Black,
+                        checkmarkColor = Color.White
+                    )
+                )
+                val celestialName = if (isLunar) "Moon" else "Sun"
+                Text("Point triangle peak at $celestialName", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+
+            val instructionText = if (pointPeakAtBody) {
+                val celestialName = if (isLunar) "moon" else "sun"
+                "Point the triangle peak at the $celestialName"
+            } else {
+                "Align the triangle base with your shadow"
+            }
+            Text(instructionText, color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
             Spacer(modifier = Modifier.weight(1f))
 
