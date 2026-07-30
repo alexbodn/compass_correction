@@ -91,17 +91,22 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var magneticAzimuth by remember { mutableStateOf(0f) }
     var location by remember { mutableStateOf<android.location.Location?>(null) }
 
-    var useGNSS by remember { mutableStateOf(false) }
-    var useTrueNorth by remember { mutableStateOf(false) }
-    var isNorthernHemisphere by remember { mutableStateOf(true) } // For manual fallback
-    var useTimezoneSpaFallback by remember { mutableStateOf(true) }
-
-    // Auto-detect DST
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
-    var isDstActive by remember { mutableStateOf(defaultDst) }
 
-    // Alignment Preferences
+    // Solar Settings
+    var solarUseGNSS by remember { mutableStateOf(false) }
+    var solarUseTrueNorth by remember { mutableStateOf(false) }
+    var solarIsNorthernHemisphere by remember { mutableStateOf(true) }
+    var solarUseTimezoneSpaFallback by remember { mutableStateOf(true) }
+    var solarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtSolar by remember { mutableStateOf(false) }
+
+    // Lunar Settings
+    var lunarUseGNSS by remember { mutableStateOf(false) }
+    var lunarUseTrueNorth by remember { mutableStateOf(false) }
+    var lunarIsNorthernHemisphere by remember { mutableStateOf(true) }
+    var lunarUseTimezoneSpaFallback by remember { mutableStateOf(true) }
+    var lunarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtLunar by remember { mutableStateOf(false) }
 
     // Update magnetic azimuth
@@ -148,6 +153,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val currentTimeMillis = System.currentTimeMillis()
 
     // Calculations
+    var selectedTabIndex by remember { mutableStateOf(0) }
+    val useTrueNorth = if (selectedTabIndex == 0) solarUseTrueNorth else lunarUseTrueNorth
     val compassAzimuth: Float
 
     if (location != null) {
@@ -159,7 +166,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     var nightWarningMsg: String? = null
     var solarNorthRelativeAzimuth: Float
-    if (useGNSS && location != null) {
+    if (solarUseGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
         val isNight = SunPositionCalculator.isNight(lat, lon, currentTimeMillis)
@@ -169,14 +176,14 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         val solarAbsoluteAzimuth = SunPositionCalculator.calculateSolarAzimuth(lat, lon, currentTimeMillis).toFloat()
         solarNorthRelativeAzimuth = (180f - solarAbsoluteAzimuth + 360f) % 360f
     } else {
-        val isNight = SunPositionCalculator.isNightFallback(currentTimeMillis, isNorthernHemisphere)
+        val isNight = SunPositionCalculator.isNightFallback(currentTimeMillis, solarIsNorthernHemisphere)
         if (isNight) {
             nightWarningMsg = "Warning: Sun may be below horizon."
         }
-        if (useTimezoneSpaFallback) {
-            solarNorthRelativeAzimuth = SunPositionCalculator.calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere).toFloat()
+        if (solarUseTimezoneSpaFallback) {
+            solarNorthRelativeAzimuth = SunPositionCalculator.calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis, solarIsNorthernHemisphere).toFloat()
         } else {
-            solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere, isDstActive).toFloat()
+            solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, solarIsNorthernHemisphere, solarIsDstActive).toFloat()
         }
     }
     if (pointPeakAtSolar) {
@@ -185,14 +192,14 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     // --- Moon Azimuth Calculation ---
     var lunarNorthRelativeAzimuth: Float
-    if (useGNSS && location != null) {
+    if (lunarUseGNSS && location != null) {
         val lat = location!!.latitude
         val lon = location!!.longitude
         val lunarAbsoluteAzimuth = MoonPositionCalculator.calculateLunarAzimuth(lat, lon, currentTimeMillis).toFloat()
         lunarNorthRelativeAzimuth = (180f - lunarAbsoluteAzimuth + 360f) % 360f
     } else {
-        if (useTimezoneSpaFallback) {
-            lunarNorthRelativeAzimuth = MoonPositionCalculator.calculateTimezoneFallbackNorthAzimuth(currentTimeMillis, isNorthernHemisphere).toFloat()
+        if (lunarUseTimezoneSpaFallback) {
+            lunarNorthRelativeAzimuth = MoonPositionCalculator.calculateTimezoneFallbackNorthAzimuth(currentTimeMillis, lunarIsNorthernHemisphere).toFloat()
         } else {
             // Analog watch bisect method does not apply to the moon.
             // When fallback is analog watch, we will just pass 0 or gray it out.
@@ -213,10 +220,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     if (lunarDiff < -180f) lunarDiff += 360f
     if (lunarDiff > 180f) lunarDiff -= 360f
     // If the analog watch fallback is active, we cannot calculate the moon properly.
-    val isLunarAnalogFallbackActive = (!useGNSS || location == null) && !useTimezoneSpaFallback
+    val isLunarAnalogFallbackActive = (!lunarUseGNSS || location == null) && !lunarUseTimezoneSpaFallback
 
     val textMeasurer = rememberTextMeasurer()
-    var selectedTabIndex by remember { mutableStateOf(0) }
     val tabs = listOf("Solar", "Lunar")
 
     Scaffold(
@@ -267,17 +273,17 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         currentTimeMillis = currentTimeMillis,
                         location = location,
                         magneticAzimuth = magneticAzimuth,
-                        useGNSS = useGNSS,
-                        onUseGNSSChange = { useGNSS = it },
-                        useTrueNorth = useTrueNorth,
-                        onUseTrueNorthChange = { useTrueNorth = it },
+                        useGNSS = solarUseGNSS,
+                        onUseGNSSChange = { solarUseGNSS = it },
+                        useTrueNorth = solarUseTrueNorth,
+                        onUseTrueNorthChange = { solarUseTrueNorth = it },
                         hasLocationPermission = hasLocationPermission,
-                        useTimezoneSpaFallback = useTimezoneSpaFallback,
-                        onUseTimezoneSpaFallbackChange = { useTimezoneSpaFallback = it },
-                        isDstActive = isDstActive,
-                        onIsDstActiveChange = { isDstActive = it },
-                        isNorthernHemisphere = isNorthernHemisphere,
-                        onIsNorthernHemisphereChange = { isNorthernHemisphere = it },
+                        useTimezoneSpaFallback = solarUseTimezoneSpaFallback,
+                        onUseTimezoneSpaFallbackChange = { solarUseTimezoneSpaFallback = it },
+                        isDstActive = solarIsDstActive,
+                        onIsDstActiveChange = { solarIsDstActive = it },
+                        isNorthernHemisphere = solarIsNorthernHemisphere,
+                        onIsNorthernHemisphereChange = { solarIsNorthernHemisphere = it },
                         nightWarningMsg = nightWarningMsg,
                         textMeasurer = textMeasurer,
                         isLunarAnalogFallbackActive = false,
@@ -292,17 +298,17 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         currentTimeMillis = currentTimeMillis,
                         location = location,
                         magneticAzimuth = magneticAzimuth,
-                        useGNSS = useGNSS,
-                        onUseGNSSChange = { useGNSS = it },
-                        useTrueNorth = useTrueNorth,
-                        onUseTrueNorthChange = { useTrueNorth = it },
+                        useGNSS = lunarUseGNSS,
+                        onUseGNSSChange = { lunarUseGNSS = it },
+                        useTrueNorth = lunarUseTrueNorth,
+                        onUseTrueNorthChange = { lunarUseTrueNorth = it },
                         hasLocationPermission = hasLocationPermission,
-                        useTimezoneSpaFallback = useTimezoneSpaFallback,
-                        onUseTimezoneSpaFallbackChange = { useTimezoneSpaFallback = it },
-                        isDstActive = isDstActive,
-                        onIsDstActiveChange = { isDstActive = it },
-                        isNorthernHemisphere = isNorthernHemisphere,
-                        onIsNorthernHemisphereChange = { isNorthernHemisphere = it },
+                        useTimezoneSpaFallback = lunarUseTimezoneSpaFallback,
+                        onUseTimezoneSpaFallbackChange = { lunarUseTimezoneSpaFallback = it },
+                        isDstActive = lunarIsDstActive,
+                        onIsDstActiveChange = { lunarIsDstActive = it },
+                        isNorthernHemisphere = lunarIsNorthernHemisphere,
+                        onIsNorthernHemisphereChange = { lunarIsNorthernHemisphere = it },
                         nightWarningMsg = null, // No day warning for moon (simplified)
                         textMeasurer = textMeasurer,
                         isLunarAnalogFallbackActive = isLunarAnalogFallbackActive,
@@ -402,14 +408,12 @@ fun CelestialToolTab(
                     }
                     val radius = 32f
 
-                    val arcStartAngle = if (pointPeakAtBody) 0f else 180f
-
                     if (!isLunar) {
-                        // Sun Rays
+                        // Full Sun Rays
                         val rayLength = 12f
                         val rayOffset = 6f
-                        for (i in 0..6) {
-                            val angle = arcStartAngle + (180f / 6) * i
+                        for (i in 0..11) {
+                            val angle = (360f / 12) * i
                             val rad = Math.toRadians(angle.toDouble()).toFloat()
                             val startRay = Offset(
                                 centerIconBase.x + (radius + rayOffset) * cos(rad),
@@ -428,25 +432,56 @@ fun CelestialToolTab(
                             )
                         }
 
-                        // Sun Body
-                        drawArc(
+                        // Full Sun Body
+                        drawCircle(
                             color = Color(0xFFFFD700),
-                            startAngle = arcStartAngle,
-                            sweepAngle = 180f,
-                            useCenter = true,
-                            topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
-                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+                            radius = radius,
+                            center = centerIconBase
                         )
                     } else {
-                        // Pale Yellow Moon Icon
-                        drawArc(
-                            color = Color(0xFFFFF59D), // Pale Yellow
-                            startAngle = arcStartAngle,
-                            sweepAngle = 180f,
-                            useCenter = true,
-                            topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
-                            size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
-                        )
+                        // Moon Phase drawing
+                        val phase = MoonPositionCalculator.calculateLunarPhase(currentTimeMillis)
+                        val moonColor = Color(0xFFFFF59D) // Pale Yellow
+                        val shadowColor = Color.Black // Assuming a dark background overlay or just "shadowed" moon
+
+                        // Base full moon
+                        drawCircle(color = moonColor, radius = radius, center = centerIconBase)
+
+                        // Calculate the terminator (the shadow line on the moon)
+                        // Phase 0.0 = New Moon, 0.5 = Quarter, 1.0 = Full Moon
+                        if (phase < 0.98) {
+                            // If it's mostly new moon
+                            if (phase < 0.02) {
+                                drawCircle(color = shadowColor, radius = radius, center = centerIconBase)
+                            } else {
+                                // Draw the shadow half
+                                val shadowSide = if (phase < 0.5) 1f else -1f // Right side shadowed if waxing, left if waning (simplified)
+
+                                // Determine sweep based on rotation requested by pointPeakAtBody toggle
+                                val startAng = if (pointPeakAtBody) 90f else -90f
+                                drawArc(
+                                    color = shadowColor,
+                                    startAngle = startAng,
+                                    sweepAngle = 180f,
+                                    useCenter = false,
+                                    topLeft = Offset(centerIconBase.x - radius, centerIconBase.y - radius),
+                                    size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+                                )
+
+                                // Ellipse terminator
+                                val widthScale = Math.abs(cos(Math.PI * phase)).toFloat()
+                                val ovalWidth = radius * 2 * widthScale
+                                val ovalLeft = centerIconBase.x - ovalWidth / 2
+                                val isLitEllipse = (phase > 0.5)
+                                val ellipseColor = if (isLitEllipse) moonColor else shadowColor
+
+                                drawOval(
+                                    color = ellipseColor,
+                                    topLeft = Offset(ovalLeft, centerIconBase.y - radius),
+                                    size = androidx.compose.ui.geometry.Size(ovalWidth, radius * 2)
+                                )
+                            }
+                        }
                     }
 
                     val dialCenter = Offset(size.width / 2, size.height * 0.5f)
@@ -589,10 +624,13 @@ fun CelestialToolTab(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onPointPeakChange(!pointPeakAtBody) }
+            ) {
                 Checkbox(
                     checked = pointPeakAtBody,
-                    onCheckedChange = onPointPeakChange,
+                    onCheckedChange = null,
                     colors = CheckboxDefaults.colors(
                         checkedColor = Color.Blue,
                         uncheckedColor = Color.Black,
@@ -615,14 +653,17 @@ fun CelestialToolTab(
 
             // Controls at bottom
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.fillMaxWidth(0.8f),
+                horizontalAlignment = Alignment.Start
             ) {
                 val gnssEnabled = hasLocationPermission
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = gnssEnabled) { onUseGNSSChange(!useGNSS) }
+                ) {
                     Checkbox(
                         checked = useGNSS && gnssEnabled,
-                        onCheckedChange = onUseGNSSChange,
+                        onCheckedChange = null,
                         enabled = gnssEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
@@ -636,10 +677,13 @@ fun CelestialToolTab(
                 }
 
                 val trueNorthEnabled = hasLocationPermission && location != null
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = trueNorthEnabled) { onUseTrueNorthChange(!useTrueNorth) }
+                ) {
                     Checkbox(
                         checked = useTrueNorth && trueNorthEnabled,
-                        onCheckedChange = onUseTrueNorthChange,
+                        onCheckedChange = null,
                         enabled = trueNorthEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
@@ -661,10 +705,13 @@ fun CelestialToolTab(
 
                 val isFallbackActive = !useGNSS || !hasLocationPermission || location == null
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = isFallbackActive) { onUseTimezoneSpaFallbackChange(!useTimezoneSpaFallback) }
+                ) {
                     Checkbox(
                         checked = useTimezoneSpaFallback && isFallbackActive,
-                        onCheckedChange = onUseTimezoneSpaFallbackChange,
+                        onCheckedChange = null,
                         enabled = isFallbackActive,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
@@ -678,10 +725,13 @@ fun CelestialToolTab(
                 }
 
                 val isDstCheckboxEnabled = isFallbackActive && !useTimezoneSpaFallback
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = isDstCheckboxEnabled) { onIsDstActiveChange(!isDstActive) }
+                ) {
                     Checkbox(
                         checked = isDstActive && isDstCheckboxEnabled,
-                        onCheckedChange = onIsDstActiveChange,
+                        onCheckedChange = null,
                         enabled = isDstCheckboxEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
@@ -694,7 +744,7 @@ fun CelestialToolTab(
                     Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, top = 8.dp)) {
                     Text("Hemisphere: ", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
                     Button(
                         onClick = { onIsNorthernHemisphereChange(true) },

@@ -77,6 +77,60 @@ object MoonPositionCalculator {
         return (azimuth + 180.0 + 360.0) % 360.0
     }
 
+    // Calculate the lunar phase using Meeus' Astronomical Algorithms.
+    // Returns a value between 0.0 and 1.0 representing the illuminated fraction.
+    // Near 0 is new moon, near 1 is full moon.
+    fun calculateLunarPhase(currentTimeMillis: Long): Double {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        calendar.timeInMillis = currentTimeMillis
+
+        val year = calendar.get(Calendar.YEAR)
+        var month = calendar.get(Calendar.MONTH) + 1
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        val minute = calendar.get(Calendar.MINUTE)
+        val second = calendar.get(Calendar.SECOND)
+
+        // Decimal hours
+        val decimalHour = hour + minute / 60.0 + second / 3600.0
+
+        // Adjusted year/month for Julian Date
+        var y = year
+        var m = month
+        if (m <= 2) {
+            y -= 1
+            m += 12
+        }
+
+        // Julian Date
+        val a = floor(y / 100.0)
+        val b = 2 - a + floor(a / 4.0)
+        val jd = floor(365.25 * (y + 4716)) + floor(30.6001 * (m + 1)) + day + b - 1524.5 + decimalHour / 24.0
+
+        // Days since J2000.0
+        val d = jd - 2451545.0
+
+        // Sun's mean anomaly
+        val sunMeanAnomaly = 357.529 + 0.98560028 * d
+
+        // Moon's mean anomaly
+        val moonMeanAnomaly = 134.963 + 13.064993 * d
+
+        // Moon's mean distance from ascending node
+        val dTerm = 297.850 + 12.190749 * d // Mean elongation of the Moon
+
+        // Phase angle calculation
+        val radSunM = Math.toRadians(sunMeanAnomaly)
+        val radMoonM = Math.toRadians(moonMeanAnomaly)
+        val radD = Math.toRadians(dTerm)
+
+        val phaseAngle = 180.0 - dTerm - 6.289 * sin(radMoonM) + 2.100 * sin(radSunM) - 1.274 * sin(2 * radD - radMoonM) - 0.658 * sin(2 * radD) - 0.214 * sin(2 * radMoonM) - 0.11 * sin(radD)
+
+        // Calculate illuminated fraction
+        var fraction = (1 + cos(Math.toRadians(phaseAngle))) / 2.0
+        return fraction.coerceIn(0.0, 1.0)
+    }
+
     // Calculates fallback relative north using a Timezone-estimated algorithm.
     // This estimates longitude based on the timezone standard meridian, and uses a generic latitude.
     fun calculateTimezoneFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Double {
