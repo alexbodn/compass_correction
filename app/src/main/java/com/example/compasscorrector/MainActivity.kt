@@ -414,20 +414,38 @@ fun CelestialToolTab(
             Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
 
+                    val dialCenter = Offset(size.width / 2, size.height * 0.5f)
+                    val outerRadius = size.width * 0.45f
+
+                    // Equilateral triangle bounding the dial.
+                    // Distance from center to vertex of an equilateral triangle circumscribing a circle of radius R is 2R.
+                    // The altitude is 3R. Distance from center to base is R.
+                    // We pad R slightly so the dial fits comfortably inside.
+                    val trianglePadding = 10f
+                    val rBound = outerRadius + trianglePadding
+
+                    // To keep the triangle centered vertically, its centroid is `dialCenter`.
+                    // Top vertex: y = dialCenter.y - 2*rBound
+                    // Bottom base: y = dialCenter.y + rBound
+                    // Base half-width: R * sqrt(3)
+                    val baseHalfWidth = (rBound * Math.sqrt(3.0)).toFloat()
+                    val peakY = dialCenter.y - 2 * rBound
+                    val baseY = dialCenter.y + rBound
+
                     val path = Path().apply {
-                        moveTo(size.width / 2, size.height * 0.1f)
-                        lineTo(size.width * 0.85f, size.height * 0.9f)
-                        lineTo(size.width * 0.15f, size.height * 0.9f)
+                        moveTo(dialCenter.x, peakY)
+                        lineTo(dialCenter.x + baseHalfWidth, baseY)
+                        lineTo(dialCenter.x - baseHalfWidth, baseY)
                         close()
                     }
-                    drawPath(path, Color.Red)
+                    drawPath(path, Color(0xFF2E7D32)) // Dark Green
 
+                    val radius = 28f
                     val centerIconBase = if (pointPeakAtBody) {
-                        Offset(size.width / 2, size.height * 0.1f)
+                        Offset(dialCenter.x, peakY - radius * 0.5f)
                     } else {
-                        Offset(size.width / 2, size.height * 0.9f)
+                        Offset(dialCenter.x, baseY + radius * 0.5f)
                     }
-                    val radius = 32f
 
                     if (!isLunar) {
                         // Full Sun Rays
@@ -505,33 +523,74 @@ fun CelestialToolTab(
                         }
                     }
 
-                    val dialCenter = Offset(size.width / 2, size.height * 0.5f)
-                    val outerRadius = size.width * 0.45f
                     drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
 
+                    val textStyleCompassN = TextStyle(color = Color.Red, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    val textStyleCompassS = TextStyle(color = Color.Blue, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    val textStyleCelestial = TextStyle(color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
                     rotate(relativeMagneticNorth, dialCenter) {
+                        // North Hand
                         drawLine(
                             color = Color.Red,
                             start = dialCenter,
                             end = Offset(dialCenter.x, dialCenter.y - outerRadius),
                             strokeWidth = 10f
                         )
+                        // Arrow for North
+                        val arrowPath = Path().apply {
+                            moveTo(dialCenter.x, dialCenter.y - outerRadius - 10f)
+                            lineTo(dialCenter.x - 10f, dialCenter.y - outerRadius + 10f)
+                            lineTo(dialCenter.x + 10f, dialCenter.y - outerRadius + 10f)
+                            close()
+                        }
+                        drawPath(arrowPath, Color.Red)
+
+                        // 'N' label
+                        val labelNOffset = textMeasurer.measure("N", textStyleCompassN)
+                        drawText(textMeasurer, "N", Offset(dialCenter.x - labelNOffset.size.width/2f, dialCenter.y - outerRadius - 35f), style = textStyleCompassN)
+
+                        // South Hand
                         drawLine(
                             color = Color.Blue,
                             start = dialCenter,
                             end = Offset(dialCenter.x, dialCenter.y + outerRadius),
                             strokeWidth = 10f
                         )
+                        // Arrow for South
+                        val arrowPathS = Path().apply {
+                            moveTo(dialCenter.x, dialCenter.y + outerRadius + 10f)
+                            lineTo(dialCenter.x - 10f, dialCenter.y + outerRadius - 10f)
+                            lineTo(dialCenter.x + 10f, dialCenter.y + outerRadius - 10f)
+                            close()
+                        }
+                        drawPath(arrowPathS, Color.Blue)
+
+                        // 'S' label
+                        val labelSOffset = textMeasurer.measure("S", textStyleCompassS)
+                        drawText(textMeasurer, "S", Offset(dialCenter.x - labelSOffset.size.width/2f, dialCenter.y + outerRadius + 10f), style = textStyleCompassS)
                     }
 
                     if (!isLunarAnalogFallbackActive) {
                         rotate(relativeCelestialNorth, dialCenter) {
                             drawLine(
-                                color = if (isLunar) Color(0xFF9E9E9E) else Color(0xFFFFA500),
+                                color = Color.Black,
                                 start = dialCenter,
                                 end = Offset(dialCenter.x, dialCenter.y - outerRadius),
                                 strokeWidth = 10f
                             )
+                            // Arrow for Celestial North
+                            val arrowPath = Path().apply {
+                                moveTo(dialCenter.x, dialCenter.y - outerRadius - 10f)
+                                lineTo(dialCenter.x - 10f, dialCenter.y - outerRadius + 10f)
+                                lineTo(dialCenter.x + 10f, dialCenter.y - outerRadius + 10f)
+                                close()
+                            }
+                            drawPath(arrowPath, Color.Black)
+
+                            // 'N' label
+                            val labelNOffset = textMeasurer.measure("N", textStyleCelestial)
+                            drawText(textMeasurer, "N", Offset(dialCenter.x - labelNOffset.size.width/2f, dialCenter.y - outerRadius - 35f), style = textStyleCelestial)
                         }
                     }
 
@@ -650,7 +709,7 @@ fun CelestialToolTab(
             // Dropdown Menu for Alignment Choice
             var expanded by remember { mutableStateOf(false) }
 
-            Box {
+            Box(modifier = Modifier.wrapContentSize(Alignment.Center)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
