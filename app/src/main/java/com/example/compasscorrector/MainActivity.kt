@@ -411,34 +411,35 @@ fun CelestialToolTab(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Box(modifier = Modifier.size(320.dp), contentAlignment = Alignment.Center) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
 
-                    val dialCenter = Offset(size.width / 2, size.height * 0.5f)
-                    val outerRadius = size.width * 0.45f
+                val dialCenter = Offset(size.width / 2, size.height * 0.5f)
 
-                    // Equilateral triangle bounding the dial.
-                    // Distance from center to vertex of an equilateral triangle circumscribing a circle of radius R is 2R.
-                    // The altitude is 3R. Distance from center to base is R.
-                    // We pad R slightly so the dial fits comfortably inside.
-                    val trianglePadding = 10f
-                    val rBound = outerRadius + trianglePadding
+                // Determine a safe radius so nothing clips.
+                // The triangle's top vertex is 2*rBound above center, and base is 1*rBound below.
+                // Additionally, labels are placed outside the dial.
+                val maxAllowedRadiusByHeight = size.height / 7f // (2 * rBound + labels) * 2 should fit in height
+                val maxAllowedRadiusByWidth = size.width / 4f   // (base half width = rBound * sqrt(3) ~ 1.7 * rBound) * 2 should fit in width
+                val rBound = Math.min(maxAllowedRadiusByHeight, maxAllowedRadiusByWidth)
 
-                    // To keep the triangle centered vertically, its centroid is `dialCenter`.
-                    // Top vertex: y = dialCenter.y - 2*rBound
-                    // Bottom base: y = dialCenter.y + rBound
-                    // Base half-width: R * sqrt(3)
-                    val baseHalfWidth = (rBound * Math.sqrt(3.0)).toFloat()
-                    val peakY = dialCenter.y - 2 * rBound
-                    val baseY = dialCenter.y + rBound
+                val trianglePadding = 10f
+                val outerRadius = rBound - trianglePadding
 
-                    val path = Path().apply {
-                        moveTo(dialCenter.x, peakY)
-                        lineTo(dialCenter.x + baseHalfWidth, baseY)
-                        lineTo(dialCenter.x - baseHalfWidth, baseY)
-                        close()
-                    }
-                    drawPath(path, Color(0xFF2E7D32)) // Dark Green
+                // To keep the triangle centered vertically, its centroid is `dialCenter`.
+                // Top vertex: y = dialCenter.y - 2*rBound
+                // Bottom base: y = dialCenter.y + rBound
+                // Base half-width: R * sqrt(3)
+                val baseHalfWidth = (rBound * Math.sqrt(3.0)).toFloat()
+                val peakY = dialCenter.y - 2 * rBound
+                val baseY = dialCenter.y + rBound
+
+                val path = Path().apply {
+                    moveTo(dialCenter.x, peakY)
+                    lineTo(dialCenter.x + baseHalfWidth, baseY)
+                    lineTo(dialCenter.x - baseHalfWidth, baseY)
+                    close()
+                }
+                drawPath(path, Color(0xFF00FF00)) // Vivid Green
 
                     val radius = 28f
                     val centerIconBase = if (pointPeakAtBody) {
@@ -868,4 +869,3 @@ fun CelestialToolTab(
             }
         }
     }
-}
