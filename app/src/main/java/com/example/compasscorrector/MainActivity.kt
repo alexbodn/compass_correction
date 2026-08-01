@@ -524,6 +524,8 @@ fun CelestialToolTab(
                         }
                     }
 
+                    // Fill dial with white, then outline with black
+                    drawCircle(Color.White, radius = outerRadius, center = dialCenter)
                     drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
 
                     val textStyleCompassN = TextStyle(color = Color.Red, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -547,10 +549,6 @@ fun CelestialToolTab(
                         }
                         drawPath(arrowPath, Color.Red)
 
-                        // 'N' label
-                        val labelNOffset = textMeasurer.measure("N", textStyleCompassN)
-                        drawText(textMeasurer, "N", Offset(dialCenter.x - labelNOffset.size.width/2f, dialCenter.y - outerRadius - 35f), style = textStyleCompassN)
-
                         // South Hand
                         drawLine(
                             color = Color.Blue,
@@ -566,10 +564,6 @@ fun CelestialToolTab(
                             close()
                         }
                         drawPath(arrowPathS, Color.Blue)
-
-                        // 'S' label
-                        val labelSOffset = textMeasurer.measure("S", textStyleCompassS)
-                        drawText(textMeasurer, "S", Offset(dialCenter.x - labelSOffset.size.width/2f, dialCenter.y + outerRadius + 10f), style = textStyleCompassS)
                     }
 
                     if (!isLunarAnalogFallbackActive) {
@@ -588,11 +582,39 @@ fun CelestialToolTab(
                                 close()
                             }
                             drawPath(arrowPath, Color.Black)
-
-                            // 'N' label
-                            val labelNOffset = textMeasurer.measure("N", textStyleCelestial)
-                            drawText(textMeasurer, "N", Offset(dialCenter.x - labelNOffset.size.width/2f, dialCenter.y - outerRadius - 35f), style = textStyleCelestial)
                         }
+                    }
+
+                    // Draw Upright Labels independently from rotation state
+                    val labelRadius = outerRadius + 25f
+
+                    // Magnetic North Upright Label
+                    val magNorthRad = Math.toRadians((relativeMagneticNorth - 90.0).toDouble()).toFloat()
+                    val magNLoc = Offset(
+                        dialCenter.x + labelRadius * cos(magNorthRad),
+                        dialCenter.y + labelRadius * sin(magNorthRad)
+                    )
+                    val labelNOffset = textMeasurer.measure("N", textStyleCompassN)
+                    drawText(textMeasurer, "N", Offset(magNLoc.x - labelNOffset.size.width/2f, magNLoc.y - labelNOffset.size.height/2f), style = textStyleCompassN)
+
+                    // Magnetic South Upright Label
+                    val magSouthRad = Math.toRadians((relativeMagneticNorth + 90.0).toDouble()).toFloat()
+                    val magSLoc = Offset(
+                        dialCenter.x + labelRadius * cos(magSouthRad),
+                        dialCenter.y + labelRadius * sin(magSouthRad)
+                    )
+                    val labelSOffset = textMeasurer.measure("S", textStyleCompassS)
+                    drawText(textMeasurer, "S", Offset(magSLoc.x - labelSOffset.size.width/2f, magSLoc.y - labelSOffset.size.height/2f), style = textStyleCompassS)
+
+                    // Celestial North Upright Label
+                    if (!isLunarAnalogFallbackActive) {
+                        val celNorthRad = Math.toRadians((relativeCelestialNorth - 90.0).toDouble()).toFloat()
+                        val celNLoc = Offset(
+                            dialCenter.x + labelRadius * cos(celNorthRad),
+                            dialCenter.y + labelRadius * sin(celNorthRad)
+                        )
+                        val labelCelNOffset = textMeasurer.measure("N", textStyleCelestial)
+                        drawText(textMeasurer, "N", Offset(celNLoc.x - labelCelNOffset.size.width/2f, celNLoc.y - labelCelNOffset.size.height/2f), style = textStyleCelestial)
                     }
 
                     val clockRadius = outerRadius * 0.7f
@@ -710,42 +732,46 @@ fun CelestialToolTab(
             // Dropdown Menu for Alignment Choice
             var expanded by remember { mutableStateOf(false) }
 
-            Box(modifier = Modifier.wrapContentSize(Alignment.Center)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clickable { expanded = true }
-                        .padding(8.dp)
-                ) {
-                    Text("Point triangle peak at: ", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (pointPeakAtBody) celestialName else "your shadow",
-                        color = Color.Blue,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 4.dp)
-                    )
-                    Text(" ▼", color = Color.Black)
-                }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Text("Point triangle peak at: ", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("your shadow") },
-                        onClick = {
-                            onPointPeakChange(false)
-                            expanded = false
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(celestialName) },
-                        onClick = {
-                            onPointPeakChange(true)
-                            expanded = false
-                        }
-                    )
+                Box(modifier = Modifier.wrapContentSize(Alignment.Center)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { expanded = true }
+                    ) {
+                        Text(
+                            if (pointPeakAtBody) celestialName else "your shadow",
+                            color = Color.Blue,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                        Text(" ▼", color = Color.Black)
+                    }
+
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("your shadow") },
+                            onClick = {
+                                onPointPeakChange(false)
+                                expanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(celestialName) },
+                            onClick = {
+                                onPointPeakChange(true)
+                                expanded = false
+                            }
+                        )
+                    }
                 }
             }
 
