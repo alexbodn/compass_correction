@@ -100,6 +100,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var solarUseTimezoneSpaFallback by remember { mutableStateOf(true) }
     var solarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtSolar by remember { mutableStateOf(false) }
+    var solarUseClockTimezoneCorrection by remember { mutableStateOf(false) }
 
     // Lunar Settings
     var lunarUseGNSS by remember { mutableStateOf(false) }
@@ -204,7 +205,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         if (solarUseTimezoneSpaFallback) {
             solarNorthRelativeAzimuth = SunPositionCalculator.calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis, solarIsNorthernHemisphere).toFloat()
         } else {
-            solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(currentTimeMillis, solarIsNorthernHemisphere, solarIsDstActive).toFloat()
+            solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(
+                currentTimeMillis,
+                solarIsNorthernHemisphere,
+                solarIsDstActive,
+                solarUseClockTimezoneCorrection
+            ).toFloat()
         }
     }
     if (pointPeakAtSolar) {
@@ -307,7 +313,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         textMeasurer = textMeasurer,
                         isLunarAnalogFallbackActive = false,
                         pointPeakAtBody = pointPeakAtSolar,
-                        onPointPeakChange = { pointPeakAtSolar = it }
+                        onPointPeakChange = { pointPeakAtSolar = it },
+                        useClockTimezoneCorrection = solarUseClockTimezoneCorrection,
+                        onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it }
                     )
                 } else if (selectedTabIndex == 1) {
                     CelestialToolTab(
@@ -332,7 +340,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         textMeasurer = textMeasurer,
                         isLunarAnalogFallbackActive = isLunarAnalogFallbackActive,
                         pointPeakAtBody = pointPeakAtLunar,
-                        onPointPeakChange = { pointPeakAtLunar = it }
+                        onPointPeakChange = { pointPeakAtLunar = it },
+                        useClockTimezoneCorrection = false, // N/A for moon
+                        onUseClockTimezoneCorrectionChange = {}
                     )
                 }
             } // End of outer tab Box
@@ -363,7 +373,9 @@ fun CelestialToolTab(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     isLunarAnalogFallbackActive: Boolean,
     pointPeakAtBody: Boolean,
-    onPointPeakChange: (Boolean) -> Unit
+    onPointPeakChange: (Boolean) -> Unit,
+    useClockTimezoneCorrection: Boolean,
+    onUseClockTimezoneCorrectionChange: (Boolean) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Human shadow background silhouette
@@ -868,6 +880,28 @@ fun CelestialToolTab(
                         )
                     )
                     Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
+                }
+
+                if (!isLunar) {
+                    val isTzCorrectEnabled = isFallbackActive && !useTimezoneSpaFallback
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = isTzCorrectEnabled) { onUseClockTimezoneCorrectionChange(!useClockTimezoneCorrection) }
+                    ) {
+                        Checkbox(
+                            checked = useClockTimezoneCorrection && isTzCorrectEnabled,
+                            onCheckedChange = null,
+                            enabled = isTzCorrectEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = Color.Black,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
+                        )
+                        Text("Apply Timezone & EoT to Clock Bisect", color = if (isTzCorrectEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, top = 8.dp)) {

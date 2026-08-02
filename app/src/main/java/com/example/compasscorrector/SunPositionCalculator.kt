@@ -171,7 +171,7 @@ object SunPositionCalculator {
 
     // Fallback night check when location is unknown
     fun isNightFallback(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Boolean {
-        val tzOffsetMillis = TimeZone.getDefault().rawOffset.toLong()
+        val tzOffsetMillis = TimeZone.getDefault().getOffset(currentTimeMillis).toLong()
         val tzOffsetHours = tzOffsetMillis / 3600000.0
 
         // Estimate longitude: 15 degrees per hour of timezone offset.
@@ -186,7 +186,7 @@ object SunPositionCalculator {
     // Calculates fallback relative north using a Timezone-estimated SPA.
     // This estimates longitude based on the timezone standard meridian, and uses a generic latitude.
     fun calculateTimezoneSpaFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean): Double {
-        val tzOffsetMillis = TimeZone.getDefault().rawOffset.toLong()
+        val tzOffsetMillis = TimeZone.getDefault().getOffset(currentTimeMillis).toLong()
         val tzOffsetHours = tzOffsetMillis / 3600000.0
 
         // Estimate longitude: 15 degrees per hour of timezone offset.
@@ -209,17 +209,73 @@ object SunPositionCalculator {
     // Calculates fallback relative north using the analog watch bisect method.
     // The user points the *bottom* of the phone at the sun (since the sun icon is at the bottom).
     // This is equivalent to pointing the hour hand of the *upside down* clock at the sun.
-    fun calculateFallbackNorthAzimuth(currentTimeMillis: Long, isNorthernHemisphere: Boolean, isDstActive: Boolean): Double {
+    fun calculateFallbackNorthAzimuth(
+        currentTimeMillis: Long,
+        isNorthernHemisphere: Boolean,
+        isDstActive: Boolean,
+        useTimezoneCorrection: Boolean
+    ): Double {
         val cal = Calendar.getInstance()
         cal.timeInMillis = currentTimeMillis
 
-        // If DST is active, use the standard time hour for calculation.
-        if (isDstActive) {
-            cal.add(Calendar.HOUR_OF_DAY, -1)
-        }
+        var h12: Double
+        var m: Double
 
-        val h12 = cal.get(Calendar.HOUR)
-        val m = cal.get(Calendar.MINUTE)
+        if (useTimezoneCorrection) {
+            // Apply Equation of Time and Longitude correction for precise solar noon
+            val calendarUtc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+            calendarUtc.timeInMillis = currentTimeMillis
+
+            val year = calendarUtc.get(Calendar.YEAR)
+            val month = calendarUtc.get(Calendar.MONTH) + 1
+            val day = calendarUtc.get(Calendar.DAY_OF_MONTH)
+            val hour = calendarUtc.get(Calendar.HOUR_OF_DAY)
+            val minute = calendarUtc.get(Calendar.MINUTE)
+            val second = calendarUtc.get(Calendar.SECOND)
+
+            val decimalHour = hour + minute / 60.0 + second / 3600.0
+
+            val a = floor(year / 100.0)
+            val b = 2 - a + floor(a / 4.0)
+            val jd = floor(365.25 * (year + 4716)) + floor(30.6001 * (month + 1)) + day + b - 1524.5 + decimalHour / 24.0
+
+            val t = (jd - 2451545.0) / 36525.0
+            var l0 = 280.46646 + t * (36000.76983 + t * 0.0003032)
+            l0 = l0 % 360.0
+            val meanAnomaly = 357.52911 + t * (35999.05029 - 0.0001537 * t)
+            val eOrbit = 0.016708634 - t * (0.000042037 + 0.0000001267 * t)
+
+            val omega = 125.04 - 1934.136 * t
+            val epsilon0 = 23.0 + 26.0 / 60.0 + 21.448 / 3600.0 - t * (46.8150 + t * (0.00059 - t * 0.001813)) / 3600.0
+            val epsilon = epsilon0 + 0.00256 * cos(Math.toRadians(omega))
+
+            val y = tan(Math.toRadians(epsilon / 2.0)).pow(2)
+            val eqTime = 4.0 * Math.toDegrees(
+                y * sin(2 * Math.toRadians(l0)) -
+                2 * eOrbit * sin(Math.toRadians(meanAnomaly)) +
+                4 * eOrbit * y * sin(Math.toRadians(meanAnomaly)) * cos(2 * Math.toRadians(l0)) -
+                0.5 * y * y * sin(4 * Math.toRadians(l0)) -
+                1.25 * eOrbit * eOrbit * sin(2 * Math.toRadians(meanAnomaly))
+            )
+
+            val tzOffsetMillis = TimeZone.getDefault().getOffset(currentTimeMillis).toLong()
+            val tzOffsetHours = tzOffsetMillis / 3600000.0
+            val estLongitude = tzOffsetHours * 15.0
+
+            // True Solar Time in minutes since UTC midnight
+            val tst = (decimalHour * 60.0 + eqTime + 4 * estLongitude) % 1440.0
+
+            h12 = (tst / 60.0) % 12.0
+            m = tst % 60.0
+        } else {
+            // If DST is active, use the standard time hour for calculation.
+            if (isDstActive) {
+                cal.add(Calendar.HOUR_OF_DAY, -1)
+            }
+
+            h12 = cal.get(Calendar.HOUR).toDouble()
+            m = cal.get(Calendar.MINUTE).toDouble()
+        }
 
         // Bisect method:
         // Point hour hand at sun. The sun is at the bottom of the phone (180 degrees).
