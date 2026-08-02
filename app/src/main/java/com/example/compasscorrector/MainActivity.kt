@@ -307,11 +307,26 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         selectedTabIndex = currentScreen
     }
 
+    // Update App Background Color
+    val backgroundColor = if (isDarkTheme) Color.Black else Color.White
+    val foregroundColor = if (isDarkTheme) Color.White else Color.Black
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(
+                drawerContainerColor = backgroundColor,
+                drawerContentColor = foregroundColor
+            ) {
                 Spacer(Modifier.height(12.dp))
+                val drawerColors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = if (isDarkTheme) Color.DarkGray else Color.LightGray,
+                    unselectedContainerColor = Color.Transparent,
+                    selectedTextColor = foregroundColor,
+                    unselectedTextColor = foregroundColor,
+                    selectedIconColor = foregroundColor,
+                    unselectedIconColor = foregroundColor
+                )
                 NavigationDrawerItem(
                     label = { Text("Solar") },
                     selected = currentScreen == 0,
@@ -319,7 +334,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         currentScreen = 0
                         coroutineScope.launch { drawerState.close() }
                     },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
                 )
                 NavigationDrawerItem(
                     label = { Text("Lunar") },
@@ -328,7 +344,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         currentScreen = 1
                         coroutineScope.launch { drawerState.close() }
                     },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
                 )
                 NavigationDrawerItem(
                     label = { Text("Settings") },
@@ -337,15 +354,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         currentScreen = 2
                         coroutineScope.launch { drawerState.close() }
                     },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
                 )
             }
         }
     ) {
-        // Update App Background Color
-        val backgroundColor = if (isDarkTheme) Color.Black else Color.White
-        val foregroundColor = if (isDarkTheme) Color.White else Color.Black
-
         Scaffold(
             containerColor = backgroundColor,
             topBar = {
@@ -489,7 +503,10 @@ fun CelestialToolTab(
                 val maxAllowedRadiusByHeight = size.height / 7f
                 val maxAllowedRadiusByWidth = size.width / 4f
                 val rBound = Math.min(maxAllowedRadiusByHeight, maxAllowedRadiusByWidth)
-                val baseY = dialCenter.y + rBound
+
+                // Enlarge the triangle by expanding its bound relative to the dial
+                val triangleBound = rBound + 40f
+                val baseY = dialCenter.y + triangleBound
 
                 clipRect(bottom = baseY) {
                     val path = Path().apply {
@@ -549,13 +566,16 @@ fun CelestialToolTab(
                 val trianglePadding = 10f
                 val outerRadius = rBound - trianglePadding
 
+                // Enlarge the triangle so the N and S labels fall completely within it
+                val triangleBound = rBound + 40f
+
                 // To keep the triangle centered vertically, its centroid is `dialCenter`.
-                // Top vertex: y = dialCenter.y - 2*rBound
-                // Bottom base: y = dialCenter.y + rBound
+                // Top vertex: y = dialCenter.y - 2*triangleBound
+                // Bottom base: y = dialCenter.y + triangleBound
                 // Base half-width: R * sqrt(3)
-                val baseHalfWidth = (rBound * Math.sqrt(3.0)).toFloat()
-                val peakY = dialCenter.y - 2 * rBound
-                val baseY = dialCenter.y + rBound
+                val baseHalfWidth = (triangleBound * Math.sqrt(3.0)).toFloat()
+                val peakY = dialCenter.y - 2 * triangleBound
+                val baseY = dialCenter.y + triangleBound
 
                 val path = Path().apply {
                     moveTo(dialCenter.x, peakY)
