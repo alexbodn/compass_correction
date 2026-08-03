@@ -310,6 +310,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     // Update App Background Color
     val backgroundColor = if (isDarkTheme) Color.Black else Color.White
     val foregroundColor = if (isDarkTheme) Color.White else Color.Black
+    val linkColor = if (isDarkTheme) Color(0xFF64B5F6) else Color.Blue
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -404,6 +405,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     CelestialToolTab(
                         isDarkTheme = isDarkTheme,
                         foregroundColor = foregroundColor,
+                        linkColor = linkColor,
                         isLunar = false,
                         relativeCelestialNorth = solarNorthRelativeAzimuth,
                         relativeMagneticNorth = relativeMagneticNorth,
@@ -433,6 +435,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     CelestialToolTab(
                         isDarkTheme = isDarkTheme,
                         foregroundColor = foregroundColor,
+                        linkColor = linkColor,
                         isLunar = true,
                         relativeCelestialNorth = lunarNorthRelativeAzimuth,
                         relativeMagneticNorth = relativeMagneticNorth,
@@ -470,6 +473,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 fun CelestialToolTab(
     isDarkTheme: Boolean,
     foregroundColor: Color,
+    linkColor: Color,
     isLunar: Boolean,
     relativeCelestialNorth: Float,
     relativeMagneticNorth: Float,
@@ -891,7 +895,7 @@ fun CelestialToolTab(
                     ) {
                         Text(
                             if (pointPeakAtBody) celestialName else "your shadow",
-                            color = Color.Blue,
+                            color = linkColor,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 4.dp)
