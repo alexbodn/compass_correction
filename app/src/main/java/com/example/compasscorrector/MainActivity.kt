@@ -12,10 +12,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -36,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var sensorHelper: SensorHelper
     private lateinit var locationHelper: LocationHelper
+    private lateinit var themePreferences: ThemePreferences
 
     private var hasLocationPermission by mutableStateOf(false)
 
@@ -50,12 +56,13 @@ class MainActivity : ComponentActivity() {
 
         sensorHelper = SensorHelper(this)
         locationHelper = LocationHelper(this)
+        themePreferences = ThemePreferences(this)
 
         checkLocationPermission()
 
         setContent {
             MaterialTheme {
-                CompassApp(sensorHelper, locationHelper, hasLocationPermission)
+                CompassApp(sensorHelper, locationHelper, hasLocationPermission, themePreferences)
             }
         }
     }
@@ -87,7 +94,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLocationPermission: Boolean) {
+fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLocationPermission: Boolean, themePreferences: ThemePreferences) {
     var magneticAzimuth by remember { mutableStateOf(0f) }
     var location by remember { mutableStateOf<android.location.Location?>(null) }
 
@@ -154,7 +161,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val currentTimeMillis = System.currentTimeMillis()
 
     // Calculations
+    var initialTabCalculated by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableStateOf(0) }
+
     val useTrueNorth = if (selectedTabIndex == 0) solarUseTrueNorth else lunarUseTrueNorth
     val compassAzimuth: Float
 
@@ -179,6 +188,45 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         MoonPositionCalculator.isMoonBelowHorizon(location!!.latitude, location!!.longitude, currentTimeMillis)
     } else {
         MoonPositionCalculator.isMoonBelowHorizonFallback(currentTimeMillis, lunarIsNorthernHemisphere)
+    }
+
+    // Determine current app theme
+    // We observe themePreferences.theme but must handle state triggering. Since themePreferences isn't a state itself,
+    // we use a remember variable that gets updated.
+    var currentThemePref by remember { mutableStateOf(themePreferences.theme) }
+    // Hook into lifecycle resume to refresh this if it changed elsewhere (though usually UI changes it directly)
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                currentThemePref = themePreferences.theme
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // A callback for SettingsScreen to trigger state update
+    val onThemeChanged: (AppTheme) -> Unit = { newTheme ->
+        themePreferences.theme = newTheme
+        currentThemePref = newTheme
+    }
+
+    val isSystemDark = isSystemInDarkTheme()
+    val isDarkTheme = when (currentThemePref) {
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+        AppTheme.SYSTEM -> isSystemDark
+        AppTheme.AUTO_SUNSET -> isSunBelowHorizon
+    }
+
+    // Set default tab on startup
+    if (!initialTabCalculated) {
+        if (isSunBelowHorizon && !isMoonBelowHorizon) {
+            selectedTabIndex = 1 // Moon is up, sun is down -> default to Lunar
+        } else {
+            selectedTabIndex = 0 // Default to Solar if both up, both down, or only Sun is up
+        }
+        initialTabCalculated = true
     }
 
     // Assign recommendations based on opposite body's visibility
@@ -248,50 +296,116 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val isLunarAnalogFallbackActive = (!lunarUseGNSS || location == null) && !lunarUseTimezoneSpaFallback
 
     val textMeasurer = rememberTextMeasurer()
-    val tabs = listOf("Solar", "Lunar")
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val coroutineScope = rememberCoroutineScope()
 
-    Scaffold(
-        topBar = {
-            @OptIn(ExperimentalMaterial3Api::class)
-            TopAppBar(
-                title = { Text("Compass Corrector", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary
+    // 0 = Solar, 1 = Lunar, 2 = Settings
+    var currentScreen by remember { mutableStateOf(selectedTabIndex) }
+
+    // Sync selectedTabIndex with currentScreen if it's 0 or 1
+    if (currentScreen == 0 || currentScreen == 1) {
+        selectedTabIndex = currentScreen
+    }
+
+    // Update App Background Color
+    val backgroundColor = if (isDarkTheme) Color.Black else Color.White
+    val foregroundColor = if (isDarkTheme) Color.White else Color.Black
+    val linkColor = if (isDarkTheme) Color(0xFF64B5F6) else Color.Blue
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = backgroundColor,
+                drawerContentColor = foregroundColor
+            ) {
+                Spacer(Modifier.height(12.dp))
+                val drawerColors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = if (isDarkTheme) Color.DarkGray else Color.LightGray,
+                    unselectedContainerColor = Color.Transparent,
+                    selectedTextColor = foregroundColor,
+                    unselectedTextColor = foregroundColor,
+                    selectedIconColor = foregroundColor,
+                    unselectedIconColor = foregroundColor
                 )
-            )
+                NavigationDrawerItem(
+                    label = { Text("Solar") },
+                    selected = currentScreen == 0,
+                    onClick = {
+                        currentScreen = 0
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+                NavigationDrawerItem(
+                    label = { Text("Lunar") },
+                    selected = currentScreen == 1,
+                    onClick = {
+                        currentScreen = 1
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+                NavigationDrawerItem(
+                    label = { Text("Settings") },
+                    selected = currentScreen == 2,
+                    onClick = {
+                        currentScreen = 2
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+            }
         }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White)
-                .padding(paddingValues),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-
-            // Correction Angle line is always visible at the top
-            Spacer(modifier = Modifier.height(8.dp))
-            if (selectedTabIndex == 1 && isLunarAnalogFallbackActive) {
-                Text("Correction Angle: N/A", color = Color.Gray, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            } else {
-                val currentDiff = if (selectedTabIndex == 0) solarDiff else lunarDiff
-                Text(String.format("Correction Angle: %.1f°", currentDiff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            }
-
-            TabRow(selectedTabIndex = selectedTabIndex) {
-                tabs.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTabIndex == index,
-                        onClick = { selectedTabIndex = index },
-                        text = { Text(title, fontWeight = FontWeight.Bold) }
+    ) {
+        Scaffold(
+            containerColor = backgroundColor,
+            topBar = {
+                @OptIn(ExperimentalMaterial3Api::class)
+                TopAppBar(
+                    title = { Text("Compass Corrector", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Menu")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        titleContentColor = MaterialTheme.colorScheme.onPrimary,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
                     )
-                }
+                )
             }
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
 
-            Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-                if (selectedTabIndex == 0) {
+                if (currentScreen == 2) {
+                    // Settings Screen
+                    SettingsScreen(currentThemePref, onThemeChanged, foregroundColor)
+                } else {
+                    // Correction Angle line is always visible at the top for tools
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (selectedTabIndex == 1 && isLunarAnalogFallbackActive) {
+                        Text("Correction Angle: N/A", color = Color.Gray, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        val currentDiff = if (selectedTabIndex == 0) solarDiff else lunarDiff
+                        Text(String.format("Correction Angle: %.1f°", currentDiff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                        if (selectedTabIndex == 0) {
                     CelestialToolTab(
+                        isDarkTheme = isDarkTheme,
+                        foregroundColor = foregroundColor,
+                        linkColor = linkColor,
                         isLunar = false,
                         relativeCelestialNorth = solarNorthRelativeAzimuth,
                         relativeMagneticNorth = relativeMagneticNorth,
@@ -319,6 +433,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     )
                 } else if (selectedTabIndex == 1) {
                     CelestialToolTab(
+                        isDarkTheme = isDarkTheme,
+                        foregroundColor = foregroundColor,
+                        linkColor = linkColor,
                         isLunar = true,
                         relativeCelestialNorth = lunarNorthRelativeAzimuth,
                         relativeMagneticNorth = relativeMagneticNorth,
@@ -346,12 +463,17 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     )
                 }
             } // End of outer tab Box
+            } // End of currentScreen check
         } // End of inner padding Column
     } // End of Scaffold
+    } // End of ModalNavigationDrawer
 }
 
 @Composable
 fun CelestialToolTab(
+    isDarkTheme: Boolean,
+    foregroundColor: Color,
+    linkColor: Color,
     isLunar: Boolean,
     relativeCelestialNorth: Float,
     relativeMagneticNorth: Float,
@@ -381,27 +503,38 @@ fun CelestialToolTab(
         // Human shadow background silhouette
         if (!pointPeakAtBody) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val path = Path().apply {
-                    moveTo(size.width * 0.35f, size.height)
-                    lineTo(size.width * 0.65f, size.height)
-                    lineTo(size.width * 0.55f, size.height * 0.5f)
-                    lineTo(size.width * 0.45f, size.height * 0.5f)
-                    close()
+                val dialCenter = Offset(size.width / 2, size.height * 0.5f)
+                val maxAllowedRadiusByHeight = size.height / 7f
+                val maxAllowedRadiusByWidth = size.width / 4f
+                val rBound = Math.min(maxAllowedRadiusByHeight, maxAllowedRadiusByWidth)
 
-                    moveTo(size.width * 0.45f, size.height * 0.5f)
-                    lineTo(size.width * 0.55f, size.height * 0.5f)
-                    lineTo(size.width * 0.75f, size.height * 0.3f)
-                    lineTo(size.width * 0.55f, size.height * 0.28f)
-                    lineTo(size.width * 0.45f, size.height * 0.28f)
-                    lineTo(size.width * 0.25f, size.height * 0.3f)
-                    close()
+                // Enlarge the triangle by expanding its bound relative to the dial
+                val triangleBound = rBound + 40f
+                val baseY = dialCenter.y + triangleBound
 
-                    addOval(androidx.compose.ui.geometry.Rect(
-                        size.width * 0.35f, size.height * 0.1f,
-                        size.width * 0.65f, size.height * 0.28f
-                    ))
+                clipRect(bottom = baseY) {
+                    val path = Path().apply {
+                        moveTo(size.width * 0.35f, size.height)
+                        lineTo(size.width * 0.65f, size.height)
+                        lineTo(size.width * 0.55f, size.height * 0.5f)
+                        lineTo(size.width * 0.45f, size.height * 0.5f)
+                        close()
+
+                        moveTo(size.width * 0.45f, size.height * 0.5f)
+                        lineTo(size.width * 0.55f, size.height * 0.5f)
+                        lineTo(size.width * 0.75f, size.height * 0.3f)
+                        lineTo(size.width * 0.55f, size.height * 0.28f)
+                        lineTo(size.width * 0.45f, size.height * 0.28f)
+                        lineTo(size.width * 0.25f, size.height * 0.3f)
+                        close()
+
+                        addOval(androidx.compose.ui.geometry.Rect(
+                            size.width * 0.35f, size.height * 0.1f,
+                            size.width * 0.65f, size.height * 0.28f
+                        ))
+                    }
+                    drawPath(path, Color.Gray)
                 }
-                drawPath(path, Color.Black.copy(alpha = 0.15f))
             }
         }
 
@@ -415,7 +548,7 @@ fun CelestialToolTab(
                 DST: $isDstActive
                 Hemi: ${if (isNorthernHemisphere) "N" else "S"}
             """.trimIndent().format(magneticAzimuth, relativeCelestialNorth)
-            Text(debugText, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
+            Text(debugText, color = foregroundColor.copy(alpha = 0.5f), fontSize = 10.sp)
         }
 
         // Central Dial fixed in absolute center
@@ -437,13 +570,16 @@ fun CelestialToolTab(
                 val trianglePadding = 10f
                 val outerRadius = rBound - trianglePadding
 
+                // Enlarge the triangle so the N and S labels fall completely within it
+                val triangleBound = rBound + 40f
+
                 // To keep the triangle centered vertically, its centroid is `dialCenter`.
-                // Top vertex: y = dialCenter.y - 2*rBound
-                // Bottom base: y = dialCenter.y + rBound
+                // Top vertex: y = dialCenter.y - 2*triangleBound
+                // Bottom base: y = dialCenter.y + triangleBound
                 // Base half-width: R * sqrt(3)
-                val baseHalfWidth = (rBound * Math.sqrt(3.0)).toFloat()
-                val peakY = dialCenter.y - 2 * rBound
-                val baseY = dialCenter.y + rBound
+                val baseHalfWidth = (triangleBound * Math.sqrt(3.0)).toFloat()
+                val peakY = dialCenter.y - 2 * triangleBound
+                val baseY = dialCenter.y + triangleBound
 
                 val path = Path().apply {
                     moveTo(dialCenter.x, peakY)
@@ -536,13 +672,15 @@ fun CelestialToolTab(
                         }
                     }
 
-                    // Fill dial with white, then outline with black
-                    drawCircle(Color.White, radius = outerRadius, center = dialCenter)
-                    drawCircle(Color.Black, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
+                    val dialFillColor = if (isDarkTheme) Color.Black else Color.White
+                    val dialOutlineColor = if (isDarkTheme) Color.White else Color.Black
+
+                    drawCircle(dialFillColor, radius = outerRadius, center = dialCenter)
+                    drawCircle(dialOutlineColor, radius = outerRadius, center = dialCenter, style = Stroke(width = 4f))
 
                     val textStyleCompassN = TextStyle(color = Color.Red, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     val textStyleCompassS = TextStyle(color = Color.Blue, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    val textStyleCelestial = TextStyle(color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    val textStyleCelestial = TextStyle(color = foregroundColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
                     rotate(relativeMagneticNorth, dialCenter) {
                         // North Hand
@@ -581,7 +719,7 @@ fun CelestialToolTab(
                     if (!isLunarAnalogFallbackActive) {
                         rotate(relativeCelestialNorth, dialCenter) {
                             drawLine(
-                                color = Color.Black,
+                                color = foregroundColor,
                                 start = dialCenter,
                                 end = Offset(dialCenter.x, dialCenter.y - outerRadius),
                                 strokeWidth = 10f
@@ -593,7 +731,7 @@ fun CelestialToolTab(
                                 lineTo(dialCenter.x + 10f, dialCenter.y - outerRadius + 10f)
                                 close()
                             }
-                            drawPath(arrowPath, Color.Black)
+                            drawPath(arrowPath, foregroundColor)
                         }
                     }
 
@@ -630,8 +768,8 @@ fun CelestialToolTab(
                     }
 
                     val clockRadius = outerRadius * 0.7f
-                    drawCircle(Color.White, radius = clockRadius, center = dialCenter)
-                    drawCircle(Color.Black, radius = clockRadius, center = dialCenter, style = Stroke(width = 2f))
+                    drawCircle(dialFillColor, radius = clockRadius, center = dialCenter)
+                    drawCircle(dialOutlineColor, radius = clockRadius, center = dialCenter, style = Stroke(width = 2f))
 
                     val cal = Calendar.getInstance()
                     cal.timeInMillis = currentTimeMillis
@@ -659,7 +797,7 @@ fun CelestialToolTab(
                     }
 
                     rotate(dialRotation, dialCenter) {
-                        val textStyle = TextStyle(color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        val textStyle = TextStyle(color = foregroundColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         val offset12 = textMeasurer.measure("12", textStyle)
                         val offset3 = textMeasurer.measure("3", textStyle)
                         val offset6 = textMeasurer.measure("6", textStyle)
@@ -677,7 +815,7 @@ fun CelestialToolTab(
                             val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
 
                             drawLine(
-                                color = Color.Black,
+                                color = foregroundColor,
                                 start = dialCenter,
                                 end = Offset(
                                     dialCenter.x + clockRadius * 0.6f * cos(localHourAngleInside),
@@ -687,7 +825,7 @@ fun CelestialToolTab(
                             )
 
                             drawLine(
-                                color = Color.Black,
+                                color = foregroundColor,
                                 start = dialCenter,
                                 end = Offset(
                                     dialCenter.x + clockRadius * 0.6f * cos(stdHourAngleInside),
@@ -699,7 +837,7 @@ fun CelestialToolTab(
                         } else {
                             val hourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
                             drawLine(
-                                color = Color.Black,
+                                color = foregroundColor,
                                 start = dialCenter,
                                 end = Offset(
                                     dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
@@ -710,7 +848,7 @@ fun CelestialToolTab(
                         }
 
                         drawLine(
-                            color = Color.Black,
+                            color = foregroundColor,
                             start = dialCenter,
                             end = Offset(
                                 dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
@@ -748,7 +886,7 @@ fun CelestialToolTab(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(8.dp)
             ) {
-                Text("Point triangle peak at: ", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Point triangle peak at: ", color = foregroundColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
                 Box(modifier = Modifier.wrapContentSize(Alignment.Center)) {
                     Row(
@@ -757,12 +895,12 @@ fun CelestialToolTab(
                     ) {
                         Text(
                             if (pointPeakAtBody) celestialName else "your shadow",
-                            color = Color.Blue,
+                            color = linkColor,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 4.dp)
                         )
-                        Text(" ▼", color = Color.Black)
+                        Text(" ▼", color = foregroundColor)
                     }
 
                     DropdownMenu(
@@ -805,13 +943,13 @@ fun CelestialToolTab(
                         enabled = gnssEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
-                            uncheckedColor = Color.Black,
+                            uncheckedColor = foregroundColor,
                             checkmarkColor = Color.White,
                             disabledUncheckedColor = Color.Gray,
                             disabledCheckedColor = Color.Gray
                         )
                     )
-                    Text("Use GNSS for ${if (isLunar) "Lunar" else "Solar"} North", color = if (gnssEnabled) Color.Black else Color.Gray)
+                    Text("Use GNSS for ${if (isLunar) "Lunar" else "Solar"} North", color = if (gnssEnabled) foregroundColor else Color.Gray)
                 }
 
                 val trueNorthEnabled = hasLocationPermission && location != null
@@ -825,13 +963,13 @@ fun CelestialToolTab(
                         enabled = trueNorthEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
-                            uncheckedColor = Color.Black,
+                            uncheckedColor = foregroundColor,
                             checkmarkColor = Color.White,
                             disabledUncheckedColor = Color.Gray,
                             disabledCheckedColor = Color.Gray
                         )
                     )
-                    Text("Adjust Magnetic to True North", color = if (trueNorthEnabled) Color.Black else Color.Gray)
+                    Text("Adjust Magnetic to True North", color = if (trueNorthEnabled) foregroundColor else Color.Gray)
                 }
 
                 if (location == null) {
@@ -853,13 +991,13 @@ fun CelestialToolTab(
                         enabled = isFallbackActive,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
-                            uncheckedColor = Color.Black,
+                            uncheckedColor = foregroundColor,
                             checkmarkColor = Color.White,
                             disabledUncheckedColor = Color.Gray,
                             disabledCheckedColor = Color.Gray
                         )
                     )
-                    Text("Use Timezone-Estimated SPA Fallback", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
+                    Text("Use Timezone-Estimated SPA Fallback", color = if (isFallbackActive) foregroundColor else Color.Gray, fontSize = 14.sp)
                 }
 
                 val isDstCheckboxEnabled = isFallbackActive && !useTimezoneSpaFallback
@@ -873,13 +1011,13 @@ fun CelestialToolTab(
                         enabled = isDstCheckboxEnabled,
                         colors = CheckboxDefaults.colors(
                             checkedColor = Color.Blue,
-                            uncheckedColor = Color.Black,
+                            uncheckedColor = foregroundColor,
                             checkmarkColor = Color.White,
                             disabledUncheckedColor = Color.Gray,
                             disabledCheckedColor = Color.Gray
                         )
                     )
-                    Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
+                    Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) foregroundColor else Color.Gray, fontSize = 14.sp)
                 }
 
                 if (!isLunar) {
@@ -894,18 +1032,18 @@ fun CelestialToolTab(
                             enabled = isTzCorrectEnabled,
                             colors = CheckboxDefaults.colors(
                                 checkedColor = Color.Blue,
-                                uncheckedColor = Color.Black,
+                                uncheckedColor = foregroundColor,
                                 checkmarkColor = Color.White,
                                 disabledUncheckedColor = Color.Gray,
                                 disabledCheckedColor = Color.Gray
                             )
                         )
-                        Text("Apply Timezone & EoT to Clock Bisect", color = if (isTzCorrectEnabled) Color.Black else Color.Gray, fontSize = 14.sp)
+                        Text("Apply Timezone & EoT to Clock Bisect", color = if (isTzCorrectEnabled) foregroundColor else Color.Gray, fontSize = 14.sp)
                     }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, top = 8.dp)) {
-                    Text("Hemisphere: ", color = if (isFallbackActive) Color.Black else Color.Gray, fontSize = 14.sp)
+                    Text("Hemisphere: ", color = if (isFallbackActive) foregroundColor else Color.Gray, fontSize = 14.sp)
                     Button(
                         onClick = { onIsNorthernHemisphereChange(true) },
                         enabled = isFallbackActive,
@@ -929,3 +1067,39 @@ fun CelestialToolTab(
             }
         }
     }
+
+@Composable
+fun SettingsScreen(currentTheme: AppTheme, onThemeChanged: (AppTheme) -> Unit, foregroundColor: Color) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("Theme", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        AppTheme.values().forEach { theme ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onThemeChanged(theme) }
+                    .padding(vertical = 8.dp)
+            ) {
+                RadioButton(
+                    selected = currentTheme == theme,
+                    onClick = { onThemeChanged(theme) },
+                    colors = RadioButtonDefaults.colors(selectedColor = Color.Blue, unselectedColor = foregroundColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                val title = when (theme) {
+                    AppTheme.LIGHT -> "Light"
+                    AppTheme.DARK -> "Dark"
+                    AppTheme.SYSTEM -> "System Default"
+                    AppTheme.AUTO_SUNSET -> "Auto (Dark at night)"
+                }
+                Text(title, color = foregroundColor)
+            }
+        }
+    }
+}
