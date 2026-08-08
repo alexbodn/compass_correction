@@ -23,6 +23,7 @@ class SensorHelper(context: Context) : SensorEventListener {
     private val orientationAngles = FloatArray(3)
 
     var onAzimuthChanged: ((Float) -> Unit)? = null
+    var onInclinationChanged: ((pitch: Float, roll: Float) -> Unit)? = null
 
     fun start() {
         accelerometer?.let {
@@ -61,6 +62,11 @@ class SensorHelper(context: Context) : SensorEventListener {
             }
 
             onAzimuthChanged?.invoke(azimuthInDegrees)
+
+            // Pitch and Roll in degrees
+            val pitchInDegrees = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+            val rollInDegrees = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
+            onInclinationChanged?.invoke(pitchInDegrees, rollInDegrees)
         }
     }
 

@@ -108,6 +108,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var solarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtSolar by remember { mutableStateOf(false) }
     var solarUseClockTimezoneCorrection by remember { mutableStateOf(false) }
+    var solarUseMalleableWatchDial by remember { mutableStateOf(false) }
+    var userLockedAltitude by remember { mutableStateOf<Float?>(null) }
+    var livePitch by remember { mutableStateOf(0f) }
+    var liveRoll by remember { mutableStateOf(0f) }
 
     // Lunar Settings
     var lunarUseGNSS by remember { mutableStateOf(false) }
@@ -117,13 +121,18 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var lunarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtLunar by remember { mutableStateOf(false) }
 
-    // Update magnetic azimuth
+    // Update magnetic azimuth and inclination
     DisposableEffect(Unit) {
         sensorHelper.onAzimuthChanged = { azimuth ->
             magneticAzimuth = azimuth
         }
+        sensorHelper.onInclinationChanged = { pitch, roll ->
+            livePitch = pitch
+            liveRoll = roll
+        }
         onDispose {
             sensorHelper.onAzimuthChanged = null
+            sensorHelper.onInclinationChanged = null
         }
     }
 
@@ -459,7 +468,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         pointPeakAtBody = pointPeakAtLunar,
                         onPointPeakChange = { pointPeakAtLunar = it },
                         useClockTimezoneCorrection = false, // N/A for moon
-                        onUseClockTimezoneCorrectionChange = {}
+                        onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it },
+                        useMalleableWatchDial = solarUseMalleableWatchDial,
+                        onUseMalleableWatchDialChange = { solarUseMalleableWatchDial = it },
+                        livePitch = livePitch,
+                        liveRoll = liveRoll,
+                        userLockedAltitude = userLockedAltitude,
+                        onUserLockedAltitudeChange = { userLockedAltitude = it }
                     )
                 }
             } // End of outer tab Box
@@ -497,7 +512,13 @@ fun CelestialToolTab(
     pointPeakAtBody: Boolean,
     onPointPeakChange: (Boolean) -> Unit,
     useClockTimezoneCorrection: Boolean,
-    onUseClockTimezoneCorrectionChange: (Boolean) -> Unit
+    onUseClockTimezoneCorrectionChange: (Boolean) -> Unit,
+    useMalleableWatchDial: Boolean = false,
+    onUseMalleableWatchDialChange: (Boolean) -> Unit = {},
+    livePitch: Float = 0f,
+    liveRoll: Float = 0f,
+    userLockedAltitude: Float? = null,
+    onUserLockedAltitudeChange: (Float?) -> Unit = {}
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Human shadow background silhouette
@@ -775,87 +796,174 @@ fun CelestialToolTab(
                     cal.timeInMillis = currentTimeMillis
                     val localH = cal.get(Calendar.HOUR)
                     val localM = cal.get(Calendar.MINUTE)
+                    val minuteAngleInside = Math.toRadians(-90.0 + localM * 6).toFloat()
 
-                    val stdCal = Calendar.getInstance()
-                    stdCal.timeInMillis = currentTimeMillis
-                    if (isDstActive) {
-                        stdCal.add(Calendar.HOUR_OF_DAY, -1)
-                    }
-                    val stdH = stdCal.get(Calendar.HOUR)
-                    val stdM = stdCal.get(Calendar.MINUTE)
+                    if (useMalleableWatchDial && !isLunar && userLockedAltitude != null) {
+                        val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
+                        val deducedLat = LatitudeDeducer.deduceLatitude(
+                            userLockedAltitude,
+                            sunData.declination,
+                            sunData.hourAngle,
+                            isNorthernHemisphere
+                        )
 
-                    val useStdHandForRotation = isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback
+                        val textStyle = TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
-                    val h = if (useStdHandForRotation) stdH else localH
-                    val m = if (useStdHandForRotation) stdM else localM
+                        if (deducedLat != null) {
+                            val currentAzimuth = SunPositionCalculator.calculateSolarAzimuth(deducedLat, sunData.estimatedLongitude, currentTimeMillis)
+                            val dialRotation = if (pointPeakAtBody) {
+                                (360f - currentAzimuth).toFloat()
+                            } else {
+                                (180f - currentAzimuth).toFloat()
+                            }
 
-                    val normalHourAngle = h * 30f + m * 0.5f
-                    val dialRotation = if (pointPeakAtBody) {
-                        360f - normalHourAngle // Point 12 o'clock hour hand up at peak
-                    } else {
-                        180f - normalHourAngle // Point 12 o'clock hour hand down at base
-                    }
+                            rotate(dialRotation, dialCenter) {
+                                for (h24 in 0..23) {
+                                    val hourCal = Calendar.getInstance()
+                                    hourCal.timeInMillis = currentTimeMillis
+                                    hourCal.set(Calendar.HOUR_OF_DAY, h24)
+                                    hourCal.set(Calendar.MINUTE, 0)
+                                    hourCal.set(Calendar.SECOND, 0)
 
-                    rotate(dialRotation, dialCenter) {
-                        val textStyle = TextStyle(color = foregroundColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        val offset12 = textMeasurer.measure("12", textStyle)
-                        val offset3 = textMeasurer.measure("3", textStyle)
-                        val offset6 = textMeasurer.measure("6", textStyle)
-                        val offset9 = textMeasurer.measure("9", textStyle)
+                                    val hourMillis = hourCal.timeInMillis
 
-                        drawText(textMeasurer, "12", dialCenter + Offset(-offset12.size.width/2f, -clockRadius + 8f), style = textStyle)
-                        drawText(textMeasurer, "6", dialCenter + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 8f), style = textStyle)
-                        drawText(textMeasurer, "3", dialCenter + Offset(clockRadius - offset3.size.width - 8f, -offset3.size.height/2f), style = textStyle)
-                        drawText(textMeasurer, "9", dialCenter + Offset(-clockRadius + 8f, -offset9.size.height/2f), style = textStyle)
+                                    if (!SunPositionCalculator.isNight(deducedLat, sunData.estimatedLongitude, hourMillis)) {
+                                        val hourAzimuth = SunPositionCalculator.calculateSolarAzimuth(deducedLat, sunData.estimatedLongitude, hourMillis)
+                                        val hourRad = Math.toRadians(hourAzimuth - 90.0).toFloat()
+                                        val h12 = if (h24 == 0) 12 else if (h24 > 12) h24 - 12 else h24
 
-                        val minuteAngleInside = Math.toRadians(-90.0 + localM * 6).toFloat()
+                                        val markStart = Offset(
+                                            dialCenter.x + clockRadius * 0.85f * cos(hourRad),
+                                            dialCenter.y + clockRadius * 0.85f * sin(hourRad)
+                                        )
+                                        val markEnd = Offset(
+                                            dialCenter.x + clockRadius * 0.95f * cos(hourRad),
+                                            dialCenter.y + clockRadius * 0.95f * sin(hourRad)
+                                        )
+                                        drawLine(color = foregroundColor, start = markStart, end = markEnd, strokeWidth = 3f)
 
-                        if (isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback) {
-                            val stdHourAngleInside = Math.toRadians(-90.0 + (stdH * 30 + stdM * 0.5)).toFloat()
-                            val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+                                        if (h24 % 3 == 0) {
+                                            val labelText = h12.toString()
+                                            val labelMeas = textMeasurer.measure(labelText, textStyle)
+                                            val textCenter = Offset(
+                                                dialCenter.x + clockRadius * 0.7f * cos(hourRad),
+                                                dialCenter.y + clockRadius * 0.7f * sin(hourRad)
+                                            )
+                                            drawText(
+                                                textMeasurer,
+                                                labelText,
+                                                Offset(textCenter.x - labelMeas.size.width/2f, textCenter.y - labelMeas.size.height/2f),
+                                                style = textStyle
+                                            )
+                                        }
+                                    }
+                                }
 
-                            drawLine(
-                                color = foregroundColor,
-                                start = dialCenter,
-                                end = Offset(
-                                    dialCenter.x + clockRadius * 0.6f * cos(localHourAngleInside),
-                                    dialCenter.y + clockRadius * 0.6f * sin(localHourAngleInside)
-                                ),
-                                strokeWidth = 10f
-                            )
+                                val currentAzimuthRad = Math.toRadians(currentAzimuth - 90.0).toFloat()
+                                drawLine(
+                                    color = foregroundColor,
+                                    start = dialCenter,
+                                    end = Offset(
+                                        dialCenter.x + clockRadius * 0.6f * cos(currentAzimuthRad),
+                                        dialCenter.y + clockRadius * 0.6f * sin(currentAzimuthRad)
+                                    ),
+                                    strokeWidth = 10f
+                                )
 
-                            drawLine(
-                                color = foregroundColor,
-                                start = dialCenter,
-                                end = Offset(
-                                    dialCenter.x + clockRadius * 0.6f * cos(stdHourAngleInside),
-                                    dialCenter.y + clockRadius * 0.6f * sin(stdHourAngleInside)
-                                ),
-                                strokeWidth = 10f,
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                            )
+                                drawLine(
+                                    color = foregroundColor,
+                                    start = dialCenter,
+                                    end = Offset(
+                                        dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
+                                        dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
+                                    ),
+                                    strokeWidth = 6f
+                                )
+                            }
                         } else {
-                            val hourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
-                            drawLine(
-                                color = foregroundColor,
-                                start = dialCenter,
-                                end = Offset(
-                                    dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
-                                    dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
-                                ),
-                                strokeWidth = 10f
-                            )
+                            val textErr = textMeasurer.measure("N/A", textStyle)
+                            drawText(textMeasurer, "N/A", Offset(dialCenter.x - textErr.size.width/2f, dialCenter.y - textErr.size.height/2f), style = textStyle)
+                        }
+                    } else {
+                        val stdCal = Calendar.getInstance()
+                        stdCal.timeInMillis = currentTimeMillis
+                        if (isDstActive) {
+                            stdCal.add(Calendar.HOUR_OF_DAY, -1)
+                        }
+                        val stdH = stdCal.get(Calendar.HOUR)
+                        val stdM = stdCal.get(Calendar.MINUTE)
+
+                        val useStdHandForRotation = isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback
+
+                        val h = if (useStdHandForRotation) stdH else localH
+                        val m = if (useStdHandForRotation) stdM else localM
+
+                        val normalHourAngle = h * 30f + m * 0.5f
+                        val dialRotation = if (pointPeakAtBody) {
+                            360f - normalHourAngle // Point 12 o'clock hour hand up at peak
+                        } else {
+                            180f - normalHourAngle // Point 12 o'clock hour hand down at base
                         }
 
-                        drawLine(
-                            color = foregroundColor,
-                            start = dialCenter,
-                            end = Offset(
-                                dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
-                                dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
-                            ),
-                            strokeWidth = 6f
-                        )
+                        rotate(dialRotation, dialCenter) {
+                            val textStyle = TextStyle(color = foregroundColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            val offset12 = textMeasurer.measure("12", textStyle)
+                            val offset3 = textMeasurer.measure("3", textStyle)
+                            val offset6 = textMeasurer.measure("6", textStyle)
+                            val offset9 = textMeasurer.measure("9", textStyle)
+
+                            drawText(textMeasurer, "12", dialCenter + Offset(-offset12.size.width/2f, -clockRadius + 8f), style = textStyle)
+                            drawText(textMeasurer, "6", dialCenter + Offset(-offset6.size.width/2f, clockRadius - offset6.size.height - 8f), style = textStyle)
+                            drawText(textMeasurer, "3", dialCenter + Offset(clockRadius - offset3.size.width - 8f, -offset3.size.height/2f), style = textStyle)
+                            drawText(textMeasurer, "9", dialCenter + Offset(-clockRadius + 8f, -offset9.size.height/2f), style = textStyle)
+
+                            if (isDstActive && (!useGNSS || location == null) && !useTimezoneSpaFallback) {
+                                val stdHourAngleInside = Math.toRadians(-90.0 + (stdH * 30 + stdM * 0.5)).toFloat()
+                                val localHourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+
+                                drawLine(
+                                    color = foregroundColor,
+                                    start = dialCenter,
+                                    end = Offset(
+                                        dialCenter.x + clockRadius * 0.6f * cos(localHourAngleInside),
+                                        dialCenter.y + clockRadius * 0.6f * sin(localHourAngleInside)
+                                    ),
+                                    strokeWidth = 10f
+                                )
+
+                                drawLine(
+                                    color = foregroundColor,
+                                    start = dialCenter,
+                                    end = Offset(
+                                        dialCenter.x + clockRadius * 0.6f * cos(stdHourAngleInside),
+                                        dialCenter.y + clockRadius * 0.6f * sin(stdHourAngleInside)
+                                    ),
+                                    strokeWidth = 10f,
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                )
+                            } else {
+                                val hourAngleInside = Math.toRadians(-90.0 + (localH * 30 + localM * 0.5)).toFloat()
+                                drawLine(
+                                    color = foregroundColor,
+                                    start = dialCenter,
+                                    end = Offset(
+                                        dialCenter.x + clockRadius * 0.6f * cos(hourAngleInside),
+                                        dialCenter.y + clockRadius * 0.6f * sin(hourAngleInside)
+                                    ),
+                                    strokeWidth = 10f
+                                )
+                            }
+
+                            drawLine(
+                                color = foregroundColor,
+                                start = dialCenter,
+                                end = Offset(
+                                    dialCenter.x + clockRadius * 0.8f * cos(minuteAngleInside),
+                                    dialCenter.y + clockRadius * 0.8f * sin(minuteAngleInside)
+                                ),
+                                strokeWidth = 6f
+                            )
+                        }
                     }
                 }
             }
@@ -1039,6 +1147,50 @@ fun CelestialToolTab(
                             )
                         )
                         Text("Apply Timezone & EoT to Clock Bisect", color = if (isTzCorrectEnabled) foregroundColor else Color.Gray, fontSize = 14.sp)
+                    }
+
+                    val isMalleableDialEnabled = isFallbackActive && !useTimezoneSpaFallback
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = isMalleableDialEnabled) { onUseMalleableWatchDialChange(!useMalleableWatchDial) }
+                    ) {
+                        Checkbox(
+                            checked = useMalleableWatchDial && isMalleableDialEnabled,
+                            onCheckedChange = null,
+                            enabled = isMalleableDialEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = foregroundColor,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
+                        )
+                        Text("Use Malleable Watch Dial (Approximation Study)", color = if (isMalleableDialEnabled) foregroundColor else Color.Gray, fontSize = 14.sp)
+                    }
+
+                    if (useMalleableWatchDial && isMalleableDialEnabled) {
+                        val (liveAlt, isCrooked) = InclinationHelper.calculateAltitudeAndCrookedness(livePitch, liveRoll)
+                        Column(modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)) {
+                            Text("Sextant Tool (Edge to Sun)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = foregroundColor)
+                            if (isCrooked) {
+                                Text("Warning: Align phone to shorten shadow", color = Color.Red, fontSize = 12.sp)
+                            }
+                            Text("Live Inclination: ${String.format("%.1f°", liveAlt)}", color = foregroundColor, fontSize = 14.sp)
+
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                                Button(
+                                    onClick = { onUserLockedAltitudeChange(liveAlt) },
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text("Lock Measurement")
+                                }
+                                if (userLockedAltitude != null) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Locked: ${String.format("%.1f°", userLockedAltitude)}", color = foregroundColor)
+                                }
+                            }
+                        }
                     }
                 }
 
