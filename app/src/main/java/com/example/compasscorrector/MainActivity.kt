@@ -881,8 +881,9 @@ fun CelestialToolTab(
                                 )
                             }
                         } else {
-                            val textErr = textMeasurer.measure("N/A", textStyle)
-                            drawText(textMeasurer, "N/A", Offset(dialCenter.x - textErr.size.width/2f, dialCenter.y - textErr.size.height/2f), style = textStyle)
+                            val msg = "No Valid Lat"
+                            val textErr = textMeasurer.measure(msg, textStyle)
+                            drawText(textMeasurer, msg, Offset(dialCenter.x - textErr.size.width/2f, dialCenter.y - textErr.size.height/2f), style = textStyle)
                         }
                     } else {
                         val stdCal = Calendar.getInstance()
