@@ -438,7 +438,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         pointPeakAtBody = pointPeakAtSolar,
                         onPointPeakChange = { pointPeakAtSolar = it },
                         useClockTimezoneCorrection = solarUseClockTimezoneCorrection,
-                        onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it }
+                        onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it },
+                        useMalleableWatchDial = solarUseMalleableWatchDial,
+                        onUseMalleableWatchDialChange = { solarUseMalleableWatchDial = it },
+                        livePitch = livePitch,
+                        liveRoll = liveRoll,
+                        userLockedAltitude = userLockedAltitude,
+                        onUserLockedAltitudeChange = { userLockedAltitude = it }
                     )
                 } else if (selectedTabIndex == 1) {
                     CelestialToolTab(
