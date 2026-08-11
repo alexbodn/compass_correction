@@ -308,7 +308,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = rememberCoroutineScope()
 
-    // 0 = Solar, 1 = Lunar, 2 = Settings
+    // 0 = Solar, 1 = Lunar, 2 = Sextant, 3 = Settings
     var currentScreen by remember { mutableStateOf(selectedTabIndex) }
 
     // Sync selectedTabIndex with currentScreen if it's 0 or 1
@@ -358,10 +358,20 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     colors = drawerColors
                 )
                 NavigationDrawerItem(
-                    label = { Text("Settings") },
+                    label = { Text("Sextant") },
                     selected = currentScreen == 2,
                     onClick = {
                         currentScreen = 2
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+                NavigationDrawerItem(
+                    label = { Text("Settings") },
+                    selected = currentScreen == 3,
+                    onClick = {
+                        currentScreen = 3
                         coroutineScope.launch { drawerState.close() }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
@@ -396,9 +406,24 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                if (currentScreen == 2) {
+                if (currentScreen == 3) {
                     // Settings Screen
                     SettingsScreen(currentThemePref, onThemeChanged, foregroundColor)
+                } else if (currentScreen == 2) {
+                    // Sextant Screen
+                    SextantScreen(
+                        foregroundColor = foregroundColor,
+                        currentTimeMillis = currentTimeMillis,
+                        isNorthernHemisphere = solarIsNorthernHemisphere,
+                        onIsNorthernHemisphereChange = {
+                            solarIsNorthernHemisphere = it
+                            lunarIsNorthernHemisphere = it
+                        },
+                        livePitch = livePitch,
+                        liveRoll = liveRoll,
+                        userLockedAltitude = userLockedAltitude,
+                        onUserLockedAltitudeChange = { userLockedAltitude = it }
+                    )
                 } else {
                     // Correction Angle line is always visible at the top for tools
                     Spacer(modifier = Modifier.height(8.dp))
@@ -441,10 +466,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it },
                         useMalleableWatchDial = solarUseMalleableWatchDial,
                         onUseMalleableWatchDialChange = { solarUseMalleableWatchDial = it },
-                        livePitch = livePitch,
-                        liveRoll = liveRoll,
-                        userLockedAltitude = userLockedAltitude,
-                        onUserLockedAltitudeChange = { userLockedAltitude = it }
+                        userLockedAltitude = userLockedAltitude
                     )
                 } else if (selectedTabIndex == 1) {
                     CelestialToolTab(
@@ -477,10 +499,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it },
                         useMalleableWatchDial = solarUseMalleableWatchDial,
                         onUseMalleableWatchDialChange = { solarUseMalleableWatchDial = it },
-                        livePitch = livePitch,
-                        liveRoll = liveRoll,
-                        userLockedAltitude = userLockedAltitude,
-                        onUserLockedAltitudeChange = { userLockedAltitude = it }
+                        userLockedAltitude = userLockedAltitude
                     )
                 }
             } // End of outer tab Box
@@ -521,10 +540,7 @@ fun CelestialToolTab(
     onUseClockTimezoneCorrectionChange: (Boolean) -> Unit,
     useMalleableWatchDial: Boolean = false,
     onUseMalleableWatchDialChange: (Boolean) -> Unit = {},
-    livePitch: Float = 0f,
-    liveRoll: Float = 0f,
-    userLockedAltitude: Float? = null,
-    onUserLockedAltitudeChange: (Float?) -> Unit = {}
+    userLockedAltitude: Float? = null
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Human shadow background silhouette
@@ -1177,26 +1193,20 @@ fun CelestialToolTab(
                     }
 
                     if (useMalleableWatchDial && isMalleableDialEnabled) {
-                        val (liveAlt, isCrooked) = InclinationHelper.calculateAltitudeAndCrookedness(livePitch, liveRoll)
-                        Column(modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)) {
-                            Text("Sextant Tool (Edge to Sun)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = foregroundColor)
-                            if (isCrooked) {
-                                Text("Warning: Align phone to shorten shadow", color = Color.Red, fontSize = 12.sp)
-                            }
-                            Text("Live Inclination: ${String.format("%.1f°", liveAlt)}", color = foregroundColor, fontSize = 14.sp)
-
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                Button(
-                                    onClick = { onUserLockedAltitudeChange(liveAlt) },
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("Lock Measurement")
-                                }
-                                if (userLockedAltitude != null) {
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Locked: ${String.format("%.1f°", userLockedAltitude)}", color = foregroundColor)
-                                }
-                            }
+                        if (userLockedAltitude == null) {
+                            Text(
+                                "Please open the 'Sextant' menu tool to measure your latitude.",
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(start = 48.dp, bottom = 8.dp)
+                            )
+                        } else {
+                            Text(
+                                "Locked Altitude: ${String.format("%.1f°", userLockedAltitude)} (Set via Sextant)",
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(start = 48.dp, bottom = 8.dp)
+                            )
                         }
                     }
                 }
@@ -1258,6 +1268,133 @@ fun SettingsScreen(currentTheme: AppTheme, onThemeChanged: (AppTheme) -> Unit, f
                     AppTheme.AUTO_SUNSET -> "Auto (Dark at night)"
                 }
                 Text(title, color = foregroundColor)
+            }
+        }
+    }
+}
+
+@Composable
+fun SextantScreen(
+    foregroundColor: Color,
+    currentTimeMillis: Long,
+    isNorthernHemisphere: Boolean,
+    onIsNorthernHemisphereChange: (Boolean) -> Unit,
+    livePitch: Float,
+    liveRoll: Float,
+    userLockedAltitude: Float?,
+    onUserLockedAltitudeChange: (Float?) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            "Use your phone's tilt sensors to measure the sun's altitude (inclination). Keep the sun behind you, hold the phone horizontal (landscape) above your head with the screen facing you, and tilt it to minimize its shadow in front of you.",
+            color = foregroundColor,
+            fontSize = 14.sp
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Illustration
+        Box(modifier = Modifier.fillMaxWidth().height(150.dp).background(Color.Transparent), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val cx = size.width / 2
+                val cy = size.height / 2
+
+                // Draw a simple stick figure representing the user
+                drawCircle(color = foregroundColor, radius = 15f, center = Offset(cx, cy)) // Head
+                drawLine(color = foregroundColor, start = Offset(cx, cy + 15f), end = Offset(cx, cy + 60f), strokeWidth = 5f) // Body
+                drawLine(color = foregroundColor, start = Offset(cx, cy + 60f), end = Offset(cx - 20f, cy + 100f), strokeWidth = 5f) // Leg L
+                drawLine(color = foregroundColor, start = Offset(cx, cy + 60f), end = Offset(cx + 20f, cy + 100f), strokeWidth = 5f) // Leg R
+
+                // Arm holding phone up
+                drawLine(color = foregroundColor, start = Offset(cx, cy + 25f), end = Offset(cx - 40f, cy - 10f), strokeWidth = 5f) // Arm
+
+                // Phone (Landscape, tilted)
+                rotate(degrees = 30f, pivot = Offset(cx - 45f, cy - 15f)) {
+                    drawRect(
+                        color = Color.Gray,
+                        topLeft = Offset(cx - 60f, cy - 20f),
+                        size = androidx.compose.ui.geometry.Size(40f, 10f)
+                    )
+                }
+
+                // Sun behind
+                drawCircle(color = Color(0xFFFFD700), radius = 20f, center = Offset(cx + 60f, cy - 40f))
+
+                // Shadow line (thin) projected in front (left side)
+                drawLine(
+                    color = foregroundColor.copy(alpha = 0.5f),
+                    start = Offset(cx - 45f, cy - 15f),
+                    end = Offset(cx - 100f, cy + 100f), // projecting down to ground
+                    strokeWidth = 2f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
+        Text("Global Sun Declination: ${String.format("%.2f°", sunData.declination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        val (liveAlt, isCrooked) = InclinationHelper.calculateAltitudeAndCrookedness(livePitch, liveRoll)
+        if (isCrooked) {
+            Text("Warning: Phone is crooked. Align properly to shorten shadow.", color = Color.Red, fontWeight = FontWeight.Bold)
+        }
+
+        Text("Live Inclination: ${String.format("%.1f°", liveAlt)}", color = foregroundColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = { onUserLockedAltitudeChange(liveAlt) },
+            modifier = Modifier.fillMaxWidth(0.8f).height(48.dp)
+        ) {
+            Text("Lock Measurement")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (userLockedAltitude != null) {
+            Text("Locked Altitude: ${String.format("%.1f°", userLockedAltitude)}", color = foregroundColor)
+
+            // Hemisphere Toggle for calculation
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
+                Button(
+                    onClick = { onIsNorthernHemisphereChange(true) },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
+                    modifier = Modifier.height(36.dp)
+                ) { Text("N") }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = { onIsNorthernHemisphereChange(false) },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
+                    modifier = Modifier.height(36.dp)
+                ) { Text("S") }
+            }
+
+            val deducedLat = LatitudeDeducer.deduceLatitude(
+                userLockedAltitude,
+                sunData.declination,
+                sunData.hourAngle,
+                isNorthernHemisphere
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            if (deducedLat != null) {
+                Text("Deduced Latitude: ${String.format("%.2f°", deducedLat)}", color = Color.Green, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Estimated Longitude: ${String.format("%.2f°", sunData.estimatedLongitude)}", color = foregroundColor, fontSize = 16.sp)
+            } else {
+                Text("Could not deduce valid latitude from this altitude.", color = Color.Red, fontSize = 16.sp)
             }
         }
     }
