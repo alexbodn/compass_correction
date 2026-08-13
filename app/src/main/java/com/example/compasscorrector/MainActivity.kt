@@ -1335,13 +1335,7 @@ fun SextantScreen(
     useTrueNorth: Boolean,
     location: android.location.Location?
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        val landscapeWidth = maxHeight // Portrait height becomes landscape width
-        val landscapeHeight = maxWidth // Portrait width becomes landscape height
-
-        // We use a modifier graphic layer to rotate the entire content block by 90 degrees.
-        // We MUST force the size to the flipped bounds so it lays out horizontally *before* rotating,
-        // otherwise the rotated column overflows the screen horizontally and hides the buttons!
+    Column(modifier = Modifier.fillMaxSize()) {
         val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
         val (liveAlt, _, isReverseLandscape) = InclinationHelper.calculateAltitudeAndOrientation(livePitch, liveRoll)
 
@@ -1480,28 +1474,27 @@ fun SextantScreen(
             }
         }
 
-        Row(
-            modifier = Modifier
-                .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
-                .requiredSize(width = landscapeWidth, height = landscapeHeight)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        // Top 60%: Rotated Interactive Controls
+        BoxWithConstraints(
+            modifier = Modifier.weight(0.6f).fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
-            // isReverseLandscape == true means top of phone points Right (+90 rotation in physical plane).
-            // When turning +90 in the screen plane, the charging port (bottom of phone) becomes the LEFT side of the horizontal UI.
-            // When turning -90 in the screen plane, the charging port (bottom of phone) becomes the RIGHT side of the horizontal UI.
-            // Since we want the masking hand (charging port) to cover the 40% illustration...
+            val rotatedWidth = maxHeight
+            val rotatedHeight = maxWidth
 
-            if (isReverseLandscape) {
-                // Charging port is on Left. Draw 40% illustration on Left, then 60% controls on Right.
-                staticInstructionsIllustration(Modifier.weight(0.4f))
-                interactiveControlsData(Modifier.weight(0.6f))
-            } else {
-                // Charging port is on Right. Draw 60% controls on Left, then 40% illustration on Right.
-                interactiveControlsData(Modifier.weight(0.6f))
-                staticInstructionsIllustration(Modifier.weight(0.4f))
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
+                    .requiredSize(width = rotatedWidth, height = rotatedHeight)
+                    .padding(16.dp)
+            ) {
+                interactiveControlsData(Modifier.fillMaxSize())
             }
+        }
+
+        // Bottom 40%: Static Portrait Instructions
+        Box(modifier = Modifier.weight(0.4f).fillMaxWidth().padding(16.dp)) {
+            staticInstructionsIllustration(Modifier.fillMaxSize())
         }
     }
 }
