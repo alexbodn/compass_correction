@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.material.icons.Icons
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -41,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var sensorHelper: SensorHelper
     private lateinit var locationHelper: LocationHelper
-    private lateinit var themePreferences: ThemePreferences
+    private lateinit var appPreferences: AppPreferences
 
     private var hasLocationPermission by mutableStateOf(false)
 
@@ -56,13 +58,13 @@ class MainActivity : ComponentActivity() {
 
         sensorHelper = SensorHelper(this)
         locationHelper = LocationHelper(this)
-        themePreferences = ThemePreferences(this)
+        appPreferences = AppPreferences(this)
 
         checkLocationPermission()
 
         setContent {
             MaterialTheme {
-                CompassApp(sensorHelper, locationHelper, hasLocationPermission, themePreferences)
+                CompassApp(sensorHelper, locationHelper, hasLocationPermission, appPreferences)
             }
         }
     }
@@ -94,31 +96,33 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLocationPermission: Boolean, themePreferences: ThemePreferences) {
+fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLocationPermission: Boolean, appPreferences: AppPreferences) {
     var magneticAzimuth by remember { mutableStateOf(0f) }
     var location by remember { mutableStateOf<android.location.Location?>(null) }
 
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
 
+    // Global Settings from Preferences
+    var globalUseTrueNorth by remember { mutableStateOf(appPreferences.useTrueNorth) }
+    var globalIsDstActive by remember { mutableStateOf(appPreferences.isDstActive) }
+
     // Solar Settings
     var solarUseGNSS by remember { mutableStateOf(false) }
-    var solarUseTrueNorth by remember { mutableStateOf(false) }
     var solarIsNorthernHemisphere by remember { mutableStateOf(true) }
     var solarUseTimezoneSpaFallback by remember { mutableStateOf(true) }
-    var solarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtSolar by remember { mutableStateOf(false) }
     var solarUseClockTimezoneCorrection by remember { mutableStateOf(false) }
     var solarUseMalleableWatchDial by remember { mutableStateOf(false) }
     var userLockedAltitude by remember { mutableStateOf<Float?>(null) }
+    var useCompassForFullLocation by remember { mutableStateOf(false) }
+    var userLockedAzimuth by remember { mutableStateOf<Float?>(null) }
     var livePitch by remember { mutableStateOf(0f) }
     var liveRoll by remember { mutableStateOf(0f) }
 
     // Lunar Settings
     var lunarUseGNSS by remember { mutableStateOf(false) }
-    var lunarUseTrueNorth by remember { mutableStateOf(false) }
     var lunarIsNorthernHemisphere by remember { mutableStateOf(true) }
     var lunarUseTimezoneSpaFallback by remember { mutableStateOf(true) }
-    var lunarIsDstActive by remember { mutableStateOf(defaultDst) }
     var pointPeakAtLunar by remember { mutableStateOf(false) }
 
     // Update magnetic azimuth and inclination
@@ -173,7 +177,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var initialTabCalculated by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableStateOf(0) }
 
-    val useTrueNorth = if (selectedTabIndex == 0) solarUseTrueNorth else lunarUseTrueNorth
+    val useTrueNorth = globalUseTrueNorth
     val compassAzimuth: Float
 
     if (location != null) {
@@ -200,14 +204,14 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     }
 
     // Determine current app theme
-    // We observe themePreferences.theme but must handle state triggering. Since themePreferences isn't a state itself,
+    // We observe appPreferences.theme but must handle state triggering. Since appPreferences isn't a state itself,
     // we use a remember variable that gets updated.
-    var currentThemePref by remember { mutableStateOf(themePreferences.theme) }
+    var currentThemePref by remember { mutableStateOf(appPreferences.theme) }
     // Hook into lifecycle resume to refresh this if it changed elsewhere (though usually UI changes it directly)
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                currentThemePref = themePreferences.theme
+                currentThemePref = appPreferences.theme
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -216,7 +220,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     // A callback for SettingsScreen to trigger state update
     val onThemeChanged: (AppTheme) -> Unit = { newTheme ->
-        themePreferences.theme = newTheme
+        appPreferences.theme = newTheme
         currentThemePref = newTheme
     }
 
@@ -265,7 +269,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             solarNorthRelativeAzimuth = SunPositionCalculator.calculateFallbackNorthAzimuth(
                 currentTimeMillis,
                 solarIsNorthernHemisphere,
-                solarIsDstActive,
+                globalIsDstActive,
                 solarUseClockTimezoneCorrection
             ).toFloat()
         }
@@ -408,7 +412,22 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
                 if (currentScreen == 3) {
                     // Settings Screen
-                    SettingsScreen(currentThemePref, onThemeChanged, foregroundColor)
+                    SettingsScreen(
+                        currentTheme = currentThemePref,
+                        onThemeChanged = onThemeChanged,
+                        foregroundColor = foregroundColor,
+                        useTrueNorth = globalUseTrueNorth,
+                        onUseTrueNorthChange = {
+                            globalUseTrueNorth = it
+                            appPreferences.useTrueNorth = it
+                        },
+                        isDstActive = globalIsDstActive,
+                        onIsDstActiveChange = {
+                            globalIsDstActive = it
+                            appPreferences.isDstActive = it
+                        },
+                        hasLocationPermission = hasLocationPermission
+                    )
                 } else if (currentScreen == 2) {
                     // Sextant Screen
                     SextantScreen(
@@ -422,7 +441,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         livePitch = livePitch,
                         liveRoll = liveRoll,
                         userLockedAltitude = userLockedAltitude,
-                        onUserLockedAltitudeChange = { userLockedAltitude = it }
+                        onUserLockedAltitudeChange = { userLockedAltitude = it },
+                        useCompassForFullLocation = useCompassForFullLocation,
+                        onUseCompassForFullLocationChange = { useCompassForFullLocation = it },
+                        magneticAzimuth = magneticAzimuth,
+                        useTrueNorth = globalUseTrueNorth,
+                        location = location
                     )
                 } else {
                     // Correction Angle line is always visible at the top for tools
@@ -448,13 +472,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         magneticAzimuth = magneticAzimuth,
                         useGNSS = solarUseGNSS,
                         onUseGNSSChange = { solarUseGNSS = it },
-                        useTrueNorth = solarUseTrueNorth,
-                        onUseTrueNorthChange = { solarUseTrueNorth = it },
+                        useTrueNorth = globalUseTrueNorth,
+
                         hasLocationPermission = hasLocationPermission,
                         useTimezoneSpaFallback = solarUseTimezoneSpaFallback,
                         onUseTimezoneSpaFallbackChange = { solarUseTimezoneSpaFallback = it },
-                        isDstActive = solarIsDstActive,
-                        onIsDstActiveChange = { solarIsDstActive = it },
+                        isDstActive = globalIsDstActive,
+
                         isNorthernHemisphere = solarIsNorthernHemisphere,
                         onIsNorthernHemisphereChange = { solarIsNorthernHemisphere = it },
                         nightWarningMsg = solarWarningMsg,
@@ -481,13 +505,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         magneticAzimuth = magneticAzimuth,
                         useGNSS = lunarUseGNSS,
                         onUseGNSSChange = { lunarUseGNSS = it },
-                        useTrueNorth = lunarUseTrueNorth,
-                        onUseTrueNorthChange = { lunarUseTrueNorth = it },
+                        useTrueNorth = globalUseTrueNorth,
+
                         hasLocationPermission = hasLocationPermission,
                         useTimezoneSpaFallback = lunarUseTimezoneSpaFallback,
                         onUseTimezoneSpaFallbackChange = { lunarUseTimezoneSpaFallback = it },
-                        isDstActive = lunarIsDstActive,
-                        onIsDstActiveChange = { lunarIsDstActive = it },
+                        isDstActive = globalIsDstActive,
+
                         isNorthernHemisphere = lunarIsNorthernHemisphere,
                         onIsNorthernHemisphereChange = { lunarIsNorthernHemisphere = it },
                         nightWarningMsg = lunarWarningMsg,
@@ -523,12 +547,10 @@ fun CelestialToolTab(
     useGNSS: Boolean,
     onUseGNSSChange: (Boolean) -> Unit,
     useTrueNorth: Boolean,
-    onUseTrueNorthChange: (Boolean) -> Unit,
     hasLocationPermission: Boolean,
     useTimezoneSpaFallback: Boolean,
     onUseTimezoneSpaFallbackChange: (Boolean) -> Unit,
     isDstActive: Boolean,
-    onIsDstActiveChange: (Boolean) -> Unit,
     isNorthernHemisphere: Boolean,
     onIsNorthernHemisphereChange: (Boolean) -> Unit,
     nightWarningMsg: String?,
@@ -1083,29 +1105,6 @@ fun CelestialToolTab(
                     Text("Use GNSS for ${if (isLunar) "Lunar" else "Solar"} North", color = if (gnssEnabled) foregroundColor else Color.Gray)
                 }
 
-                val trueNorthEnabled = hasLocationPermission && location != null
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = trueNorthEnabled) { onUseTrueNorthChange(!useTrueNorth) }
-                ) {
-                    Checkbox(
-                        checked = useTrueNorth && trueNorthEnabled,
-                        onCheckedChange = null,
-                        enabled = trueNorthEnabled,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color.Blue,
-                            uncheckedColor = foregroundColor,
-                            checkmarkColor = Color.White,
-                            disabledUncheckedColor = Color.Gray,
-                            disabledCheckedColor = Color.Gray
-                        )
-                    )
-                    Text("Adjust Magnetic to True North", color = if (trueNorthEnabled) foregroundColor else Color.Gray)
-                }
-
-                if (location == null) {
-                    Text("Warning: Magnetic North not adjusted to True North.", color = Color.Red, fontSize = 12.sp)
-                }
                 if (!hasLocationPermission) {
                     Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red, fontSize = 12.sp)
                 }
@@ -1131,25 +1130,7 @@ fun CelestialToolTab(
                     Text("Use Timezone-Estimated SPA Fallback", color = if (isFallbackActive) foregroundColor else Color.Gray, fontSize = 14.sp)
                 }
 
-                val isDstCheckboxEnabled = isFallbackActive && !useTimezoneSpaFallback
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = isDstCheckboxEnabled) { onIsDstActiveChange(!isDstActive) }
-                ) {
-                    Checkbox(
-                        checked = isDstActive && isDstCheckboxEnabled,
-                        onCheckedChange = null,
-                        enabled = isDstCheckboxEnabled,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color.Blue,
-                            uncheckedColor = foregroundColor,
-                            checkmarkColor = Color.White,
-                            disabledUncheckedColor = Color.Gray,
-                            disabledCheckedColor = Color.Gray
-                        )
-                    )
-                    Text("DST Active (Daylight Saving Time)", color = if (isDstCheckboxEnabled) foregroundColor else Color.Gray, fontSize = 14.sp)
-                }
+
 
                 if (!isLunar) {
                     val isTzCorrectEnabled = isFallbackActive && !useTimezoneSpaFallback
@@ -1238,7 +1219,16 @@ fun CelestialToolTab(
     }
 
 @Composable
-fun SettingsScreen(currentTheme: AppTheme, onThemeChanged: (AppTheme) -> Unit, foregroundColor: Color) {
+fun SettingsScreen(
+    currentTheme: AppTheme,
+    onThemeChanged: (AppTheme) -> Unit,
+    foregroundColor: Color,
+    useTrueNorth: Boolean,
+    onUseTrueNorthChange: (Boolean) -> Unit,
+    isDstActive: Boolean,
+    onIsDstActiveChange: (Boolean) -> Unit,
+    hasLocationPermission: Boolean
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1270,6 +1260,52 @@ fun SettingsScreen(currentTheme: AppTheme, onThemeChanged: (AppTheme) -> Unit, f
                 Text(title, color = foregroundColor)
             }
         }
+
+        Spacer(modifier = Modifier.height(32.dp))
+        Text("Global Settings", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable(enabled = hasLocationPermission) { onUseTrueNorthChange(!useTrueNorth) }.padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = useTrueNorth && hasLocationPermission,
+                onCheckedChange = null,
+                enabled = hasLocationPermission,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Color.Blue,
+                    uncheckedColor = foregroundColor,
+                    checkmarkColor = Color.White,
+                    disabledUncheckedColor = Color.Gray,
+                    disabledCheckedColor = Color.Gray
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+                Text("Adjust Magnetic to True North", color = if (hasLocationPermission) foregroundColor else Color.Gray)
+                if (!hasLocationPermission) {
+                    Text("Requires GNSS permission.", color = Color.Red, fontSize = 12.sp)
+                }
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable { onIsDstActiveChange(!isDstActive) }.padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = isDstActive,
+                onCheckedChange = null,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Color.Blue,
+                    uncheckedColor = foregroundColor,
+                    checkmarkColor = Color.White
+                )
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("DST Active (Daylight Saving Time)", color = foregroundColor)
+        }
     }
 }
 
@@ -1282,119 +1318,148 @@ fun SextantScreen(
     livePitch: Float,
     liveRoll: Float,
     userLockedAltitude: Float?,
-    onUserLockedAltitudeChange: (Float?) -> Unit
+    onUserLockedAltitudeChange: (Float?) -> Unit,
+    useCompassForFullLocation: Boolean,
+    onUseCompassForFullLocationChange: (Boolean) -> Unit,
+    magneticAzimuth: Float,
+    useTrueNorth: Boolean,
+    location: android.location.Location?
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
-        Spacer(modifier = Modifier.height(8.dp))
+    BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val landscapeWidth = maxHeight // Portrait height becomes landscape width
+        val landscapeHeight = maxWidth // Portrait width becomes landscape height
 
-        Text(
-            "Use your phone's tilt sensors to measure the sun's altitude (inclination). Keep the sun behind you, hold the phone horizontal (landscape) above your head with the screen facing you, and tilt it to minimize its shadow in front of you.",
-            color = foregroundColor,
-            fontSize = 14.sp
-        )
+        // We use a modifier graphic layer to rotate the entire content block by 90 degrees.
+        // We MUST force the size to the flipped bounds so it lays out horizontally *before* rotating,
+        // otherwise the rotated column overflows the screen horizontally and hides the buttons!
+        Column(
+            modifier = Modifier
+                .graphicsLayer { rotationZ = -90f }
+                .requiredSize(width = landscapeWidth, height = landscapeHeight)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
+            val (liveAlt, _) = InclinationHelper.calculateAltitudeAndCrookedness(livePitch, liveRoll)
 
-        Spacer(modifier = Modifier.height(16.dp))
+            // TOP 60%: Information & Canvas
+            Column(modifier = Modifier.weight(0.6f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
 
-        // Illustration
-        Box(modifier = Modifier.fillMaxWidth().height(150.dp).background(Color.Transparent), contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val cx = size.width / 2
-                val cy = size.height / 2
+                Text(
+                    "Hold phone horizontal above your head, screen facing you. Sun is behind you. Tilt to minimize front shadow.",
+                    color = foregroundColor,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
 
-                // Draw a simple stick figure representing the user
-                drawCircle(color = foregroundColor, radius = 15f, center = Offset(cx, cy)) // Head
-                drawLine(color = foregroundColor, start = Offset(cx, cy + 15f), end = Offset(cx, cy + 60f), strokeWidth = 5f) // Body
-                drawLine(color = foregroundColor, start = Offset(cx, cy + 60f), end = Offset(cx - 20f, cy + 100f), strokeWidth = 5f) // Leg L
-                drawLine(color = foregroundColor, start = Offset(cx, cy + 60f), end = Offset(cx + 20f, cy + 100f), strokeWidth = 5f) // Leg R
+                Box(modifier = Modifier.fillMaxWidth().weight(1f).background(Color.Transparent), contentAlignment = Alignment.Center) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val cx = size.width / 2
+                        val cy = size.height / 2
 
-                // Arm holding phone up
-                drawLine(color = foregroundColor, start = Offset(cx, cy + 25f), end = Offset(cx - 40f, cy - 10f), strokeWidth = 5f) // Arm
+                        drawCircle(color = foregroundColor, radius = 15f, center = Offset(cx, cy)) // Head
+                        drawLine(color = foregroundColor, start = Offset(cx, cy + 15f), end = Offset(cx, cy + 50f), strokeWidth = 5f) // Body
+                        drawLine(color = foregroundColor, start = Offset(cx, cy + 50f), end = Offset(cx - 15f, cy + 90f), strokeWidth = 5f) // Leg L
+                        drawLine(color = foregroundColor, start = Offset(cx, cy + 50f), end = Offset(cx + 15f, cy + 90f), strokeWidth = 5f) // Leg R
 
-                // Phone (Landscape, tilted)
-                rotate(degrees = 30f, pivot = Offset(cx - 45f, cy - 15f)) {
-                    drawRect(
-                        color = Color.Gray,
-                        topLeft = Offset(cx - 60f, cy - 20f),
-                        size = androidx.compose.ui.geometry.Size(40f, 10f)
-                    )
+                        // Arm holding phone up
+                        drawLine(color = foregroundColor, start = Offset(cx, cy + 25f), end = Offset(cx - 30f, cy - 10f), strokeWidth = 5f) // Arm
+
+                        // Phone (Landscape, tilted)
+                        rotate(degrees = 30f, pivot = Offset(cx - 35f, cy - 15f)) {
+                            drawRect(
+                                color = Color.Gray,
+                                topLeft = Offset(cx - 50f, cy - 20f),
+                                size = androidx.compose.ui.geometry.Size(30f, 8f)
+                            )
+                        }
+
+                        // Sun behind
+                        drawCircle(color = Color(0xFFFFD700), radius = 15f, center = Offset(cx + 50f, cy - 30f))
+
+                        // Shadow line (thin) projected in front (left side)
+                        drawLine(
+                            color = foregroundColor.copy(alpha = 0.5f),
+                            start = Offset(cx - 35f, cy - 15f),
+                            end = Offset(cx - 80f, cy + 90f), // projecting down to ground
+                            strokeWidth = 2f,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                        )
+                    }
                 }
 
-                // Sun behind
-                drawCircle(color = Color(0xFFFFD700), radius = 20f, center = Offset(cx + 60f, cy - 40f))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Measured Altitude: ${String.format("%.1f°", if (userLockedAltitude != null) userLockedAltitude else liveAlt)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Sun Declination: ${String.format("%.2f°", sunData.declination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                }
 
-                // Shadow line (thin) projected in front (left side)
-                drawLine(
-                    color = foregroundColor.copy(alpha = 0.5f),
-                    start = Offset(cx - 45f, cy - 15f),
-                    end = Offset(cx - 100f, cy + 100f), // projecting down to ground
-                    strokeWidth = 2f,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
-        Text("Global Sun Declination: ${String.format("%.2f°", sunData.declination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        val (liveAlt, isCrooked) = InclinationHelper.calculateAltitudeAndCrookedness(livePitch, liveRoll)
-        if (isCrooked) {
-            Text("Warning: Phone is crooked. Align properly to shorten shadow.", color = Color.Red, fontWeight = FontWeight.Bold)
-        }
-
-        Text("Live Inclination: ${String.format("%.1f°", liveAlt)}", color = foregroundColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(
-            onClick = { onUserLockedAltitudeChange(liveAlt) },
-            modifier = Modifier.fillMaxWidth(0.8f).height(48.dp)
-        ) {
-            Text("Lock Measurement")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (userLockedAltitude != null) {
-            Text("Locked Altitude: ${String.format("%.1f°", userLockedAltitude)}", color = foregroundColor)
-
-            // Hemisphere Toggle for calculation
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
-                Button(
-                    onClick = { onIsNorthernHemisphereChange(true) },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
-                    modifier = Modifier.height(36.dp)
-                ) { Text("N") }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = { onIsNorthernHemisphereChange(false) },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
-                    modifier = Modifier.height(36.dp)
-                ) { Text("S") }
+                if (userLockedAltitude != null) {
+                    if (useCompassForFullLocation) {
+                        var trueAzimuth = magneticAzimuth
+                        if (useTrueNorth && location != null) {
+                            val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
+                            trueAzimuth = (magneticAzimuth + declination + 360f) % 360f
+                        }
+                        val fullLoc = LocationDeducer.deduceFullLocation(userLockedAltitude, trueAzimuth, sunData.declination, currentTimeMillis)
+                        if (fullLoc != null) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Deduced Lat: ${String.format("%.2f°", fullLoc.first)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Text("Deduced Lon: ${String.format("%.2f°", fullLoc.second)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Text("Could not solve spherical math for this attitude.", color = Color.Red)
+                        }
+                    } else {
+                        val deducedLat = LatitudeDeducer.deduceLatitude(userLockedAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            if (deducedLat != null) {
+                                Text("Deduced Lat: ${String.format("%.2f°", deducedLat)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Could not deduce Lat.", color = Color.Red)
+                            }
+                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", sunData.estimatedLongitude)}", color = foregroundColor)
+                        }
+                    }
+                }
             }
 
-            val deducedLat = LatitudeDeducer.deduceLatitude(
-                userLockedAltitude,
-                sunData.declination,
-                sunData.hourAngle,
-                isNorthernHemisphere
-            )
+            // BOTTOM 40%: Controls
+            Column(modifier = Modifier.weight(0.4f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                if (!useCompassForFullLocation) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("N") }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(false) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("S") }
+                    }
+                }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            if (deducedLat != null) {
-                Text("Deduced Latitude: ${String.format("%.2f°", deducedLat)}", color = Color.Green, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Estimated Longitude: ${String.format("%.2f°", sunData.estimatedLongitude)}", color = foregroundColor, fontSize = 16.sp)
-            } else {
-                Text("Could not deduce valid latitude from this altitude.", color = Color.Red, fontSize = 16.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }) {
+                    Checkbox(
+                        checked = useCompassForFullLocation,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
+                    )
+                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = { onUserLockedAltitudeChange(liveAlt) },
+                    modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
+                ) {
+                    Text(if (userLockedAltitude == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+                }
             }
         }
     }

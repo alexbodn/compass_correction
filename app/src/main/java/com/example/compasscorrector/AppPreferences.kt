@@ -7,8 +7,8 @@ enum class AppTheme {
     LIGHT, DARK, SYSTEM, AUTO_SUNSET
 }
 
-class ThemePreferences(context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
+class AppPreferences(context: Context) {
+    private val prefs: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
 
     var theme: AppTheme
         get() {
@@ -22,4 +22,12 @@ class ThemePreferences(context: Context) {
         set(value) {
             prefs.edit().putString("app_theme", value.name).apply()
         }
+
+    var useTrueNorth: Boolean
+        get() = prefs.getBoolean("use_true_north", false)
+        set(value) = prefs.edit().putBoolean("use_true_north", value).apply()
+
+    var isDstActive: Boolean
+        get() = prefs.getBoolean("is_dst_active", java.util.TimeZone.getDefault().inDaylightTime(java.util.Date()))
+        set(value) = prefs.edit().putBoolean("is_dst_active", value).apply()
 }
