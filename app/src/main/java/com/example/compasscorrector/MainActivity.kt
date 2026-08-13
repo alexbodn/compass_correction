@@ -1347,7 +1347,7 @@ fun SextantScreen(
 
         Row(
             modifier = Modifier
-                .graphicsLayer { rotationZ = if (isReverseLandscape) 90f else -90f }
+                .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
                 .requiredSize(width = landscapeWidth, height = landscapeHeight)
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1376,9 +1376,9 @@ fun SextantScreen(
                         // If standard landscape (top left), the sun is 90 deg to the right of the phone's top
                         // If reverse landscape (top right), the sun is 90 deg to the left
                         val sunAzimuth = if (isReverseLandscape) {
-                            (trueAzimuth - 90f + 360f) % 360f
-                        } else {
                             (trueAzimuth + 90f) % 360f
+                        } else {
+                            (trueAzimuth - 90f + 360f) % 360f
                         }
 
                         val fullLoc = LocationDeducer.deduceFullLocation(userLockedAltitude, sunAzimuth, sunData.declination, currentTimeMillis)
