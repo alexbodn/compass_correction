@@ -1345,17 +1345,9 @@ fun SextantScreen(
         val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
         val (liveAlt, _, isReverseLandscape) = InclinationHelper.calculateAltitudeAndOrientation(livePitch, liveRoll)
 
-        Row(
-            modifier = Modifier
-                .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
-                .requiredSize(width = landscapeWidth, height = landscapeHeight)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
 
-            // TOP 60%: Interactive Controls and Dynamic Data
-            Column(modifier = Modifier.weight(0.6f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        val interactiveControlsData = @Composable { modifier: Modifier ->
+            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -1372,9 +1364,6 @@ fun SextantScreen(
                             trueAzimuth = (magneticAzimuth + declination + 360f) % 360f
                         }
 
-                        // Correct Azimuth based on landscape orientation
-                        // If standard landscape (top left), the sun is 90 deg to the right of the phone's top
-                        // If reverse landscape (top right), the sun is 90 deg to the left
                         val sunAzimuth = if (isReverseLandscape) {
                             (trueAzimuth + 90f) % 360f
                         } else {
@@ -1442,9 +1431,10 @@ fun SextantScreen(
                     Text(if (userLockedAltitude == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
                 }
             }
+        }
 
-            // BOTTOM 40%: Static Instructions & Illustration
-            Column(modifier = Modifier.weight(0.4f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+        val staticInstructionsIllustration = @Composable { modifier: Modifier ->
+            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
                 Text(
                     "Hold phone horizontal above your head, screen facing you. Sun is behind you. Tilt to minimize front shadow.",
                     color = foregroundColor,
@@ -1487,6 +1477,30 @@ fun SextantScreen(
                         )
                     }
                 }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
+                .requiredSize(width = landscapeWidth, height = landscapeHeight)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // isReverseLandscape == true means top of phone points Right (+90 rotation in physical plane).
+            // When turning +90 in the screen plane, the charging port (bottom of phone) becomes the LEFT side of the horizontal UI.
+            // When turning -90 in the screen plane, the charging port (bottom of phone) becomes the RIGHT side of the horizontal UI.
+            // Since we want the masking hand (charging port) to cover the 40% illustration...
+
+            if (isReverseLandscape) {
+                // Charging port is on Left. Draw 40% illustration on Left, then 60% controls on Right.
+                staticInstructionsIllustration(Modifier.weight(0.4f))
+                interactiveControlsData(Modifier.weight(0.6f))
+            } else {
+                // Charging port is on Right. Draw 60% controls on Left, then 40% illustration on Right.
+                interactiveControlsData(Modifier.weight(0.6f))
+                staticInstructionsIllustration(Modifier.weight(0.4f))
             }
         }
     }
