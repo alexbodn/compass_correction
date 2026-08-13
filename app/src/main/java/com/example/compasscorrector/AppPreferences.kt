@@ -7,6 +7,10 @@ enum class AppTheme {
     LIGHT, DARK, SYSTEM, AUTO_SUNSET
 }
 
+enum class DstMode {
+    AUTO_SYSTEM, ALWAYS_ON, ALWAYS_OFF
+}
+
 class AppPreferences(context: Context) {
     private val prefs: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
 
@@ -27,7 +31,24 @@ class AppPreferences(context: Context) {
         get() = prefs.getBoolean("use_true_north", false)
         set(value) = prefs.edit().putBoolean("use_true_north", value).apply()
 
-    var isDstActive: Boolean
-        get() = prefs.getBoolean("is_dst_active", java.util.TimeZone.getDefault().inDaylightTime(java.util.Date()))
-        set(value) = prefs.edit().putBoolean("is_dst_active", value).apply()
+    var dstMode: DstMode
+        get() {
+            val name = prefs.getString("dst_mode", DstMode.AUTO_SYSTEM.name) ?: DstMode.AUTO_SYSTEM.name
+            return try {
+                DstMode.valueOf(name)
+            } catch (e: Exception) {
+                DstMode.AUTO_SYSTEM
+            }
+        }
+        set(value) {
+            prefs.edit().putString("dst_mode", value.name).apply()
+        }
+
+    fun evaluateIsDstActive(): Boolean {
+        return when (dstMode) {
+            DstMode.ALWAYS_ON -> true
+            DstMode.ALWAYS_OFF -> false
+            DstMode.AUTO_SYSTEM -> java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
+        }
+    }
 }

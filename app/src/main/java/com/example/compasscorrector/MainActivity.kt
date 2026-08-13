@@ -104,7 +104,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     // Global Settings from Preferences
     var globalUseTrueNorth by remember { mutableStateOf(appPreferences.useTrueNorth) }
-    var globalIsDstActive by remember { mutableStateOf(appPreferences.isDstActive) }
+    var globalDstMode by remember { mutableStateOf(appPreferences.dstMode) }
+    val globalIsDstActive = remember(globalDstMode) { appPreferences.evaluateIsDstActive() }
 
     // Solar Settings
     var solarUseGNSS by remember { mutableStateOf(false) }
@@ -421,10 +422,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             globalUseTrueNorth = it
                             appPreferences.useTrueNorth = it
                         },
-                        isDstActive = globalIsDstActive,
-                        onIsDstActiveChange = {
-                            globalIsDstActive = it
-                            appPreferences.isDstActive = it
+                        dstMode = globalDstMode,
+                        onDstModeChange = {
+                            globalDstMode = it
+                            appPreferences.dstMode = it
                         },
                         hasLocationPermission = hasLocationPermission
                     )
@@ -1225,8 +1226,8 @@ fun SettingsScreen(
     foregroundColor: Color,
     useTrueNorth: Boolean,
     onUseTrueNorthChange: (Boolean) -> Unit,
-    isDstActive: Boolean,
-    onIsDstActiveChange: (Boolean) -> Unit,
+    dstMode: DstMode,
+    onDstModeChange: (DstMode) -> Unit,
     hasLocationPermission: Boolean
 ) {
     Column(
@@ -1290,21 +1291,30 @@ fun SettingsScreen(
             }
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().clickable { onIsDstActiveChange(!isDstActive) }.padding(vertical = 8.dp)
-        ) {
-            Checkbox(
-                checked = isDstActive,
-                onCheckedChange = null,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = Color.Blue,
-                    uncheckedColor = foregroundColor,
-                    checkmarkColor = Color.White
+        Text("DST (Daylight Saving Time)", style = MaterialTheme.typography.titleMedium, color = foregroundColor, modifier = Modifier.padding(top = 16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        DstMode.values().forEach { mode ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onDstModeChange(mode) }
+                    .padding(vertical = 4.dp)
+            ) {
+                RadioButton(
+                    selected = dstMode == mode,
+                    onClick = { onDstModeChange(mode) },
+                    colors = RadioButtonDefaults.colors(selectedColor = Color.Blue, unselectedColor = foregroundColor)
                 )
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("DST Active (Daylight Saving Time)", color = foregroundColor)
+                Spacer(modifier = Modifier.width(8.dp))
+                val title = when (mode) {
+                    DstMode.AUTO_SYSTEM -> "Auto (System Timezone)"
+                    DstMode.ALWAYS_ON -> "Always On"
+                    DstMode.ALWAYS_OFF -> "Always Off"
+                }
+                Text(title, color = foregroundColor)
+            }
         }
     }
 }
@@ -1332,21 +1342,109 @@ fun SextantScreen(
         // We use a modifier graphic layer to rotate the entire content block by 90 degrees.
         // We MUST force the size to the flipped bounds so it lays out horizontally *before* rotating,
         // otherwise the rotated column overflows the screen horizontally and hides the buttons!
-        Column(
+        val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
+        val (liveAlt, _, isReverseLandscape) = InclinationHelper.calculateAltitudeAndOrientation(livePitch, liveRoll)
+
+        Row(
             modifier = Modifier
-                .graphicsLayer { rotationZ = -90f }
+                .graphicsLayer { rotationZ = if (isReverseLandscape) 90f else -90f }
                 .requiredSize(width = landscapeWidth, height = landscapeHeight)
                 .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
-            val (liveAlt, _) = InclinationHelper.calculateAltitudeAndCrookedness(livePitch, liveRoll)
 
-            // TOP 60%: Information & Canvas
-            Column(modifier = Modifier.weight(0.6f), horizontalAlignment = Alignment.CenterHorizontally) {
+            // TOP 60%: Interactive Controls and Dynamic Data
+            Column(modifier = Modifier.weight(0.6f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
+                Spacer(modifier = Modifier.height(8.dp))
 
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Measured Altitude: ${String.format("%.1f°", if (userLockedAltitude != null) userLockedAltitude else liveAlt)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Sun Declination: ${String.format("%.2f°", sunData.declination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                }
+
+                if (userLockedAltitude != null) {
+                    if (useCompassForFullLocation) {
+                        var trueAzimuth = magneticAzimuth
+                        if (useTrueNorth && location != null) {
+                            val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
+                            trueAzimuth = (magneticAzimuth + declination + 360f) % 360f
+                        }
+
+                        // Correct Azimuth based on landscape orientation
+                        // If standard landscape (top left), the sun is 90 deg to the right of the phone's top
+                        // If reverse landscape (top right), the sun is 90 deg to the left
+                        val sunAzimuth = if (isReverseLandscape) {
+                            (trueAzimuth - 90f + 360f) % 360f
+                        } else {
+                            (trueAzimuth + 90f) % 360f
+                        }
+
+                        val fullLoc = LocationDeducer.deduceFullLocation(userLockedAltitude, sunAzimuth, sunData.declination, currentTimeMillis)
+                        if (fullLoc != null) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Deduced Lat: ${String.format("%.2f°", fullLoc.first)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Text("Deduced Lon: ${String.format("%.2f°", fullLoc.second)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Text("Could not solve spherical math for this attitude.", color = Color.Red)
+                        }
+                    } else {
+                        val deducedLat = LatitudeDeducer.deduceLatitude(userLockedAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            if (deducedLat != null) {
+                                Text("Deduced Lat: ${String.format("%.2f°", deducedLat)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Could not deduce Lat.", color = Color.Red)
+                            }
+                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", sunData.estimatedLongitude)}", color = foregroundColor)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (!useCompassForFullLocation) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("N") }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(false) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("S") }
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }) {
+                    Checkbox(
+                        checked = useCompassForFullLocation,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
+                    )
+                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
+                }
+                if (useCompassForFullLocation) {
+                    Text("Warning: Check compass accuracy against the sun before calculating.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+                Button(
+                    onClick = { onUserLockedAltitudeChange(liveAlt) },
+                    modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
+                ) {
+                    Text(if (userLockedAltitude == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+                }
+            }
+
+            // BOTTOM 40%: Static Instructions & Illustration
+            Column(modifier = Modifier.weight(0.4f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
                 Text(
                     "Hold phone horizontal above your head, screen facing you. Sun is behind you. Tilt to minimize front shadow.",
                     color = foregroundColor,
@@ -1388,77 +1486,6 @@ fun SextantScreen(
                             pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                         )
                     }
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Measured Altitude: ${String.format("%.1f°", if (userLockedAltitude != null) userLockedAltitude else liveAlt)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                    Text("Sun Declination: ${String.format("%.2f°", sunData.declination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                }
-
-                if (userLockedAltitude != null) {
-                    if (useCompassForFullLocation) {
-                        var trueAzimuth = magneticAzimuth
-                        if (useTrueNorth && location != null) {
-                            val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
-                            trueAzimuth = (magneticAzimuth + declination + 360f) % 360f
-                        }
-                        val fullLoc = LocationDeducer.deduceFullLocation(userLockedAltitude, trueAzimuth, sunData.declination, currentTimeMillis)
-                        if (fullLoc != null) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Deduced Lat: ${String.format("%.2f°", fullLoc.first)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                                Text("Deduced Lon: ${String.format("%.2f°", fullLoc.second)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Text("Could not solve spherical math for this attitude.", color = Color.Red)
-                        }
-                    } else {
-                        val deducedLat = LatitudeDeducer.deduceLatitude(userLockedAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            if (deducedLat != null) {
-                                Text("Deduced Lat: ${String.format("%.2f°", deducedLat)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("Could not deduce Lat.", color = Color.Red)
-                            }
-                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", sunData.estimatedLongitude)}", color = foregroundColor)
-                        }
-                    }
-                }
-            }
-
-            // BOTTOM 40%: Controls
-            Column(modifier = Modifier.weight(0.4f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                if (!useCompassForFullLocation) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
-                        Button(
-                            onClick = { onIsNorthernHemisphereChange(true) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("N") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = { onIsNorthernHemisphereChange(false) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("S") }
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }) {
-                    Checkbox(
-                        checked = useCompassForFullLocation,
-                        onCheckedChange = null,
-                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
-                    )
-                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = { onUserLockedAltitudeChange(liveAlt) },
-                    modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
-                ) {
-                    Text(if (userLockedAltitude == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
                 }
             }
         }
