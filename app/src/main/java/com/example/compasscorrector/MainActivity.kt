@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.Path
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -379,6 +381,16 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     colors = drawerColors
                 )
                 NavigationDrawerItem(
+                    label = { Text("Watch Study") },
+                    selected = currentScreen == 4,
+                    onClick = {
+                        currentScreen = 4
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+                NavigationDrawerItem(
                     label = { Text("Settings") },
                     selected = currentScreen == 3,
                     onClick = {
@@ -417,7 +429,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                if (currentScreen == 3) {
+                if (currentScreen == 4) {
+                    WatchStudyScreen(
+                        foregroundColor = foregroundColor,
+                        currentTimeMillis = currentTimeMillis,
+                        isNorthernHemisphere = solarIsNorthernHemisphere
+                    )
+                } else if (currentScreen == 3) {
                     // Settings Screen
                     SettingsScreen(
                         currentTheme = currentThemePref,
@@ -1448,193 +1466,136 @@ fun SextantScreen(
         }
 
         val staticInstructionsIllustration = @Composable { modifier: Modifier ->
-            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+            Column(modifier = modifier.fillMaxWidth()) {
                 Text(
-                    "Hold phone horizontal above your head, screen facing you. Sun is behind you. Tilt to minimize front shadow.",
+                    "Hold phone horizontally above your head.",
                     color = foregroundColor,
                     fontSize = 12.sp,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(bottom = 8.dp, start = 8.dp),
+                    fontWeight = FontWeight.Bold
                 )
 
-                Box(modifier = Modifier.fillMaxWidth().weight(1f).background(Color.Transparent), contentAlignment = Alignment.Center) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val canvasWidth = size.width
-                        val canvasHeight = size.height
+                Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    // Left 1/3: Profile View
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
+                            Text("1. Profile", fontSize = 10.sp, color = foregroundColor, modifier = Modifier.padding(bottom = 4.dp))
+                            Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                                val canvasWidth = size.width
+                                val canvasHeight = size.height
+                                val scale = canvasHeight / 150f
+                                val cx = canvasWidth / 2 + 10f * scale
+                                val cy = canvasHeight / 2 + 10f * scale
 
-                        // Define a base scale based on canvas height to make it fit nicely
-                        val scale = canvasHeight / 250f
+                                // Sun
+                                val sunCx = cx + 30f * scale
+                                val sunCy = cy - 50f * scale
+                                drawCircle(color = Color(0xFFFFD700), radius = 10f * scale, center = Offset(sunCx, sunCy))
 
-                        // Center offsets
-                        val cx = canvasWidth / 2 + (20f * scale) // shift right slightly to make room for shadow
-                        val cy = canvasHeight / 2 + (20f * scale)
+                                // Phone blocking sun rays
+                                val phoneCx = cx - 20f * scale
+                                val phoneCy = cy - 40f * scale
+                                rotate(degrees = 30f, pivot = Offset(phoneCx, phoneCy)) {
+                                    drawRect(color = Color.Gray, topLeft = Offset(phoneCx - 15f * scale, phoneCy - 2f * scale), size = androidx.compose.ui.geometry.Size(30f * scale, 4f * scale))
+                                }
 
-                        // --- 1. Draw the Human Silhouette ---
-                        val bodyPath = androidx.compose.ui.graphics.Path().apply {
-                            // Head
-                            addOval(androidx.compose.ui.geometry.Rect(
-                                left = cx - 15f * scale,
-                                top = cy - 60f * scale,
-                                right = cx + 15f * scale,
-                                bottom = cy - 30f * scale
-                            ))
-                            // Torso
-                            moveTo(cx - 5f * scale, cy - 30f * scale)
-                            lineTo(cx + 5f * scale, cy - 30f * scale)
-                            lineTo(cx + 10f * scale, cy + 30f * scale)
-                            lineTo(cx - 10f * scale, cy + 30f * scale)
-                            close()
+                                // Sun Rays stopped by phone
+                                drawLine(color = Color(0xFFFFD700), start = Offset(sunCx, sunCy), end = Offset(phoneCx + 5f * scale, phoneCy - 15f * scale), strokeWidth = 1f * scale)
+                                drawLine(color = Color(0xFFFFD700), start = Offset(sunCx, sunCy), end = Offset(phoneCx + 15f * scale, phoneCy - 5f * scale), strokeWidth = 1f * scale)
 
-                            // Legs (Simplified)
-                            moveTo(cx - 8f * scale, cy + 30f * scale)
-                            lineTo(cx - 12f * scale, cy + 90f * scale)
-                            lineTo(cx - 2f * scale, cy + 90f * scale)
-                            lineTo(cx, cy + 30f * scale)
+                                // Person
+                                val bodyPath = androidx.compose.ui.graphics.Path().apply {
+                                    addOval(androidx.compose.ui.geometry.Rect(left = cx - 8f * scale, top = cy - 30f * scale, right = cx + 8f * scale, bottom = cy - 14f * scale))
+                                    moveTo(cx, cy - 14f * scale)
+                                    lineTo(cx, cy + 20f * scale)
+                                    lineTo(cx - 5f * scale, cy + 50f * scale)
+                                    moveTo(cx, cy + 20f * scale)
+                                    lineTo(cx + 5f * scale, cy + 50f * scale)
+                                }
+                                drawPath(path = bodyPath, color = foregroundColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * scale))
 
-                            moveTo(cx, cy + 30f * scale)
-                            lineTo(cx + 8f * scale, cy + 90f * scale)
-                            lineTo(cx + 18f * scale, cy + 90f * scale)
-                            lineTo(cx + 8f * scale, cy + 30f * scale)
+                                // Arm holding phone
+                                drawLine(color = foregroundColor, start = Offset(cx, cy - 10f * scale), end = Offset(phoneCx, phoneCy), strokeWidth = 3f * scale)
+
+                                // Ground
+                                drawLine(color = foregroundColor.copy(alpha = 0.3f), start = Offset(0f, cy + 50f * scale), end = Offset(canvasWidth, cy + 50f * scale), strokeWidth = 2f)
+                            }
+                            Text("Tilt to align with rays", fontSize = 9.sp, color = foregroundColor, textAlign = TextAlign.Center, lineHeight = 10.sp)
                         }
-
-                        drawPath(
-                            path = bodyPath,
-                            color = foregroundColor,
-                            style = androidx.compose.ui.graphics.drawscope.Fill
-                        )
-
-                        // Arm holding phone up (aiming left/upward)
-                        val armPath = androidx.compose.ui.graphics.Path().apply {
-                            moveTo(cx - 5f * scale, cy - 20f * scale) // Shoulder
-                            lineTo(cx - 40f * scale, cy - 50f * scale) // Hand
-                        }
-                        drawPath(
-                            path = armPath,
-                            color = foregroundColor,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8f * scale, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                        )
-
-                        // --- 2. Draw the Phone ---
-                        val phoneCx = cx - 45f * scale
-                        val phoneCy = cy - 55f * scale
-                        rotate(degrees = 30f, pivot = Offset(phoneCx, phoneCy)) {
-                            drawRect(
-                                color = Color.Gray,
-                                topLeft = Offset(phoneCx - 20f * scale, phoneCy - 4f * scale),
-                                size = androidx.compose.ui.geometry.Size(40f * scale, 8f * scale)
-                            )
-                        }
-
-                        // --- 3. Draw the Sun ---
-                        val sunCx = cx + 70f * scale
-                        val sunCy = cy - 80f * scale
-                        drawCircle(color = Color(0xFFFFD700), radius = 20f * scale, center = Offset(sunCx, sunCy))
-
-                        // --- 4. Draw Shadows and Ground ---
-                        // Ground Line
-                        drawLine(
-                            color = foregroundColor.copy(alpha = 0.3f),
-                            start = Offset(0f, cy + 90f * scale),
-                            end = Offset(canvasWidth, cy + 90f * scale),
-                            strokeWidth = 2f
-                        )
-
-                        // Human Shadow on ground (stretching left)
-                        val shadowPath = androidx.compose.ui.graphics.Path().apply {
-                            moveTo(cx - 10f * scale, cy + 90f * scale) // base of feet
-                            lineTo(cx - 90f * scale, cy + 90f * scale) // tip of head shadow
-                            lineTo(cx - 80f * scale, cy + 93f * scale)
-                            lineTo(cx + 10f * scale, cy + 93f * scale)
-                            close()
-                        }
-                        drawPath(
-                            path = shadowPath,
-                            color = foregroundColor.copy(alpha = 0.2f),
-                            style = androidx.compose.ui.graphics.drawscope.Fill
-                        )
-
-                        // Phone Shadow (thin line stretching further left)
-                        val phoneShadowX = cx - 120f * scale
-                        drawLine(
-                            color = foregroundColor.copy(alpha = 0.5f),
-                            start = Offset(cx - 90f * scale, cy + 90f * scale), // Starts near hand shadow
-                            end = Offset(phoneShadowX, cy + 90f * scale),
-                            strokeWidth = 3f * scale
-                        )
-
-                        // --- 5. Draw Explanatory Labels and Arrows ---
-
-                        // Arrow pointing to phone shadow
-                        val isDark = foregroundColor == Color.White
-                        val arrowColor = if (isDark) Color(0xFF64B5F6) else Color.Blue
-                        drawLine(
-                            color = arrowColor,
-                            start = Offset(phoneShadowX - 20f * scale, cy + 60f * scale),
-                            end = Offset(phoneShadowX + 10f * scale, cy + 85f * scale),
-                            strokeWidth = 2f * scale
-                        )
-                        // Arrowhead
-                        drawLine(
-                            color = arrowColor,
-                            start = Offset(phoneShadowX + 10f * scale, cy + 85f * scale),
-                            end = Offset(phoneShadowX + 5f * scale, cy + 75f * scale),
-                            strokeWidth = 2f * scale
-                        )
-                        drawLine(
-                            color = arrowColor,
-                            start = Offset(phoneShadowX + 10f * scale, cy + 85f * scale),
-                            end = Offset(phoneShadowX + 0f * scale, cy + 82f * scale),
-                            strokeWidth = 2f * scale
-                        )
-
-                        // Arrow pointing from eyes to screen
-                        val eyeX = cx - 20f * scale
-                        val eyeY = cy - 45f * scale
-                        val screenTargetX = phoneCx
-                        val screenTargetY = phoneCy + 5f * scale
-                        drawLine(
-                            color = arrowColor,
-                            start = Offset(eyeX, eyeY),
-                            end = Offset(screenTargetX, screenTargetY),
-                            strokeWidth = 2f * scale,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                        )
-                        // Arrowhead
-                        drawLine(
-                            color = arrowColor,
-                            start = Offset(screenTargetX, screenTargetY),
-                            end = Offset(screenTargetX + 5f * scale, screenTargetY + 5f * scale),
-                            strokeWidth = 2f * scale
-                        )
-                        drawLine(
-                            color = arrowColor,
-                            start = Offset(screenTargetX, screenTargetY),
-                            end = Offset(screenTargetX + 8f * scale, screenTargetY - 2f * scale),
-                            strokeWidth = 2f * scale
-                        )
                     }
 
-                    // Overlay Text Labels (using standard Compose Text for better readability)
-                    val isDark = foregroundColor == Color.White
-                    val textColor = if (isDark) Color(0xFF64B5F6) else Color.Blue
-                    Text(
-                        text = "aim to have it\nthinnest at the edge",
-                        color = textColor,
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 40.dp)
-                    )
+                    // Middle 1/3: View Upwards
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
+                            Text("2. View Up", fontSize = 10.sp, color = foregroundColor, modifier = Modifier.padding(bottom = 4.dp))
+                            Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                                val canvasWidth = size.width
+                                val canvasHeight = size.height
+                                val scale = canvasHeight / 150f
+                                val cx = canvasWidth / 2
+                                val cy = canvasHeight / 2
 
-                    Text(
-                        text = "lock altitude\nreading",
-                        color = textColor,
-                        fontSize = 10.sp,
-                        lineHeight = 12.sp,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(end = 40.dp, top = 20.dp)
-                    )
+                                // Screen View (looking up from behind)
+                                drawRect(
+                                    color = Color.LightGray,
+                                    topLeft = Offset(cx - 25f * scale, cy - 30f * scale),
+                                    size = androidx.compose.ui.geometry.Size(50f * scale, 30f * scale)
+                                )
+                                drawRect(
+                                    color = Color.Black,
+                                    topLeft = Offset(cx - 23f * scale, cy - 28f * scale),
+                                    size = androidx.compose.ui.geometry.Size(46f * scale, 26f * scale),
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f)
+                                )
+
+                                // Arms coming from bottom
+                                drawLine(color = foregroundColor, start = Offset(cx - 30f * scale, cy + 40f * scale), end = Offset(cx - 25f * scale, cy), strokeWidth = 6f * scale)
+                                drawLine(color = foregroundColor, start = Offset(cx + 30f * scale, cy + 40f * scale), end = Offset(cx + 25f * scale, cy), strokeWidth = 6f * scale)
+
+                                // Hands
+                                drawCircle(color = foregroundColor, radius = 5f * scale, center = Offset(cx - 25f * scale, cy))
+                                drawCircle(color = foregroundColor, radius = 5f * scale, center = Offset(cx + 25f * scale, cy))
+                            }
+                            Text("Lock altitude\nreading on screen", fontSize = 9.sp, color = foregroundColor, textAlign = TextAlign.Center, lineHeight = 10.sp)
+                        }
+                    }
+
+                    // Right 1/3: View Downwards
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
+                            Text("3. View Down", fontSize = 10.sp, color = foregroundColor, modifier = Modifier.padding(bottom = 4.dp))
+                            Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                                val canvasWidth = size.width
+                                val canvasHeight = size.height
+                                val scale = canvasHeight / 150f
+                                val cx = canvasWidth / 2
+                                val cy = canvasHeight / 2
+
+                                // Ground Area
+                                drawRect(
+                                    color = foregroundColor.copy(alpha = 0.1f),
+                                    topLeft = Offset(0f, 0f),
+                                    size = androidx.compose.ui.geometry.Size(canvasWidth, canvasHeight)
+                                )
+
+                                // Phone shadow on ground
+                                drawRect(
+                                    color = foregroundColor.copy(alpha = 0.4f),
+                                    topLeft = Offset(cx - 20f * scale, cy - 5f * scale),
+                                    size = androidx.compose.ui.geometry.Size(40f * scale, 10f * scale)
+                                )
+
+                                // Hands shadows
+                                drawCircle(color = foregroundColor.copy(alpha = 0.4f), radius = 6f * scale, center = Offset(cx - 25f * scale, cy))
+                                drawCircle(color = foregroundColor.copy(alpha = 0.4f), radius = 6f * scale, center = Offset(cx + 25f * scale, cy))
+
+                                // Arms shadows extending down
+                                drawLine(color = foregroundColor.copy(alpha = 0.4f), start = Offset(cx - 25f * scale, cy), end = Offset(cx - 30f * scale, cy + 40f * scale), strokeWidth = 8f * scale)
+                                drawLine(color = foregroundColor.copy(alpha = 0.4f), start = Offset(cx + 25f * scale, cy), end = Offset(cx + 30f * scale, cy + 40f * scale), strokeWidth = 8f * scale)
+                            }
+                            Text("Minimize phone\nshadow to an edge", fontSize = 9.sp, color = foregroundColor, textAlign = TextAlign.Center, lineHeight = 10.sp)
+                        }
+                    }
                 }
             }
         }
@@ -1661,5 +1622,170 @@ fun SextantScreen(
         Box(modifier = Modifier.weight(0.4f).fillMaxWidth().padding(16.dp)) {
             staticInstructionsIllustration(Modifier.fillMaxSize())
         }
+    }
+}
+
+@Composable
+fun WatchStudyScreen(
+    foregroundColor: Color,
+    currentTimeMillis: Long,
+    isNorthernHemisphere: Boolean
+) {
+    var selectedParallel by remember { mutableStateOf(40f) }
+
+    // We want to calculate the true sun azimuth for hours 6 AM to 6 PM
+    // at the given latitude. Since we don't have longitude, we'll assume
+    // standard meridian noon and calculate hour angles manually.
+
+    // The sun's declination for today
+    val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
+    val declination = sunData.declination
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Watch Approximation Study", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
+        Text("Comparing 30° rigid watch dials vs True Sun Azimuth", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("Latitude: ${String.format("%.0f°", selectedParallel)}", color = foregroundColor, modifier = Modifier.width(100.dp))
+            Slider(
+                value = selectedParallel,
+                onValueChange = { selectedParallel = it },
+                valueRange = 0f..90f,
+                steps = 8, // 10, 20, ... 80
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Canvas(modifier = Modifier.fillMaxSize(0.9f)) {
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+                val radius = minOf(canvasWidth, canvasHeight) / 2f
+                val cx = canvasWidth / 2f
+                val cy = canvasHeight / 2f
+
+                // Draw Base Watch Dial (Outer circle)
+                drawCircle(color = foregroundColor, radius = radius, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
+
+                // Text Paint
+                val textPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.GRAY
+                    textSize = 40f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                val trueTextPaint = android.graphics.Paint().apply {
+                    color = if (foregroundColor == Color.White) android.graphics.Color.CYAN else android.graphics.Color.BLUE
+                    textSize = 40f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    isFakeBoldText = true
+                }
+
+                // Draw the standard uniform watch face (12 hours = 30 deg each)
+                for (hour in 1..12) {
+                    val standardAngle = (hour * 30f) - 90f // 12 is at top (-90 deg)
+                    val standardRad = Math.toRadians(standardAngle.toDouble())
+                    val standardX = cx + (radius * 0.75f) * kotlin.math.cos(standardRad).toFloat()
+                    val standardY = cy + (radius * 0.75f) * kotlin.math.sin(standardRad).toFloat()
+
+                    // Draw tick mark
+                    val tickOuterX = cx + radius * kotlin.math.cos(standardRad).toFloat()
+                    val tickOuterY = cy + radius * kotlin.math.sin(standardRad).toFloat()
+                    val tickInnerX = cx + (radius * 0.9f) * kotlin.math.cos(standardRad).toFloat()
+                    val tickInnerY = cy + (radius * 0.9f) * kotlin.math.sin(standardRad).toFloat()
+                    drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = 2f)
+
+                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), standardX, standardY + 15f, textPaint)
+                }
+
+                // Draw True Sun Azimuth "Soft" Dial
+                // From 6 AM (Hour Angle = -90) to 6 PM (Hour Angle = +90)
+                // Note: This is an approximation for standard time, assuming 12:00 is solar noon.
+
+                for (hour in 6..18) {
+                    val displayHour = if (hour > 12) hour - 12 else hour
+                    val hourAngle = (hour - 12) * 15.0 // Degrees
+
+                    // Spherical trig to find azimuth
+                    val latRad = Math.toRadians(selectedParallel.toDouble() * if (isNorthernHemisphere) 1.0 else -1.0)
+                    val decRad = Math.toRadians(declination)
+                    val haRad = Math.toRadians(hourAngle)
+
+                    // Altitude
+                    val sinAlt = kotlin.math.sin(latRad) * kotlin.math.sin(decRad) + kotlin.math.cos(latRad) * kotlin.math.cos(decRad) * kotlin.math.cos(haRad)
+                    val altRad = kotlin.math.asin(sinAlt)
+
+                    // Azimuth
+                    val cosAz = (kotlin.math.sin(decRad) - kotlin.math.sin(latRad) * kotlin.math.sin(altRad)) / (kotlin.math.cos(latRad) * kotlin.math.cos(altRad))
+                    var trueAzimuth = Math.toDegrees(kotlin.math.acos(cosAz.coerceIn(-1.0, 1.0)))
+
+                    if (hour > 12) {
+                        trueAzimuth = 360.0 - trueAzimuth
+                    }
+
+                    // Map True Azimuth to dial drawing angle (Azimuth 0 is North. On watch, 12 is South typically for the sun in N.H.)
+                    // If we treat 12 as South (Azimuth 180), then 6 AM is East (Az 90), 6 PM is West (Az 270)
+                    // Let's draw it such that Azimuth 180 is at the top (-90 degrees on Canvas).
+                    // Canvas Angle = TrueAzimuth - 180 - 90 = TrueAzimuth - 270
+
+                    val sunCanvasAngle = if (isNorthernHemisphere) {
+                        trueAzimuth - 270.0
+                    } else {
+                        // In Southern Hemisphere, sun is North at noon. So Azimuth 0 is at the top.
+                        // Canvas Angle = TrueAzimuth - 90
+                        trueAzimuth - 90.0
+                    }
+
+                    val sunRad = Math.toRadians(sunCanvasAngle)
+
+                    // Draw "Soft" Marker
+                    val trueX = cx + (radius * 0.5f) * kotlin.math.cos(sunRad).toFloat()
+                    val trueY = cy + (radius * 0.5f) * kotlin.math.sin(sunRad).toFloat()
+
+                    // Draw line connecting standard hour to true hour to show the stretch/warp
+                    val standardAngle = (displayHour * 30f) - 90f
+                    val standardRad = Math.toRadians(standardAngle.toDouble())
+                    val standardX = cx + (radius * 0.65f) * kotlin.math.cos(standardRad).toFloat()
+                    val standardY = cy + (radius * 0.65f) * kotlin.math.sin(standardRad).toFloat()
+
+                    val warpColor = if (foregroundColor == Color.White) Color(0x6600FFFF) else Color(0x660000FF)
+                    drawLine(color = warpColor, start = Offset(standardX, standardY), end = Offset(trueX, trueY), strokeWidth = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+
+                    drawContext.canvas.nativeCanvas.drawText(displayHour.toString(), trueX, trueY + 15f, trueTextPaint)
+                }
+
+                // Draw compass directions
+                val compassPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.RED
+                    textSize = 30f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                val southPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.BLUE
+                    textSize = 30f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+
+                if (isNorthernHemisphere) {
+                    drawContext.canvas.nativeCanvas.drawText("S (12)", cx, cy - radius + 40f, compassPaint)
+                    drawContext.canvas.nativeCanvas.drawText("E", cx + radius - 30f, cy + 10f, compassPaint)
+                    drawContext.canvas.nativeCanvas.drawText("W", cx - radius + 30f, cy + 10f, compassPaint)
+                } else {
+                    drawContext.canvas.nativeCanvas.drawText("N (12)", cx, cy - radius + 40f, southPaint)
+                    drawContext.canvas.nativeCanvas.drawText("E", cx + radius - 30f, cy + 10f, southPaint)
+                    drawContext.canvas.nativeCanvas.drawText("W", cx - radius + 30f, cy + 10f, southPaint)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "The gray outer numbers show a perfect 30° watch dial. The colored inner numbers show where the sun ACTUALLY is at that hour for the selected latitude based on today's declination.",
+            color = foregroundColor,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
