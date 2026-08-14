@@ -10,6 +10,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -1466,17 +1468,52 @@ fun SextantScreen(
         }
 
         val staticInstructionsIllustration = @Composable { modifier: Modifier ->
-            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            val scrollState = rememberScrollState()
+            Column(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.Start
+            ) {
                 Text(
-                    "Hold phone screen facing you. Sun is behind you. Tilt to minimize front shadow.",
+                    "Foreword:",
+                    color = foregroundColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    """This sextant is meant to calculate the latitude of the user, that in the absence of GNSS can be used, together with the Sun direction and the time of day, to aproximate the North.
+
+Another classical usage of the sextant is to detect the full user location given the time and the North direction. The user may select whether to calculate location or aproximate the latitude only.""",
                     color = foregroundColor,
                     fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
+                    modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    "Instructions:",
+                    color = foregroundColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    """With your back to the Sun, hold the phone horizontally with one hand.
+The holding point is at the part closer to the charging port, over this instructions part.
+The phone should be kept higher than your head so it won't be overshadowed.
+
+Looking forward up, you should see the phone's screen. Looking forward down you should see your shadow and the shadow of the phone in your hand.
+
+Please tilt the phone so that it's shadow would be as thin as possible, and hold it firmly.
+Press with the other hand the lock measurement button.""",
+                    color = foregroundColor,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // Add the drawing at the bottom, giving it a fixed height so it renders correctly inside a scrollable column
+                Box(modifier = Modifier.fillMaxWidth().height(250.dp), contentAlignment = Alignment.Center) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val canvasWidth = size.width
                         val canvasHeight = size.height
