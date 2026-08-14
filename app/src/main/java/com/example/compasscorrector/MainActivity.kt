@@ -1529,9 +1529,13 @@ fun SextantScreen(
                             moveTo(cx + shadowOffsetX + 10f * scale, cy + shadowOffsetY)
                             lineTo(cx - 30f * scale, cy + 50f * scale) // Back leg
 
-                            // Shadow Arm holding phone
+                            // Shadow Right Arm (holding phone up)
                             moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 30f * scale)
-                            lineTo(cx + shadowOffsetX + 25f * scale, cy + shadowOffsetY - 75f * scale) // arm reaching up
+                            lineTo(cx + shadowOffsetX + 30f * scale, cy + shadowOffsetY - 95f * scale)
+
+                            // Shadow Left Arm (resting down)
+                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 30f * scale)
+                            lineTo(cx + shadowOffsetX - 15f * scale, cy + shadowOffsetY + 10f * scale)
                         }
 
                         drawPath(
@@ -1541,8 +1545,8 @@ fun SextantScreen(
                         )
 
                         // Shadow of the phone itself (thick line, edge-on to sun)
-                        val phoneShadowCx = cx + shadowOffsetX + 25f * scale
-                        val phoneShadowCy = cy + shadowOffsetY - 75f * scale
+                        val phoneShadowCx = cx + shadowOffsetX + 30f * scale
+                        val phoneShadowCy = cy + shadowOffsetY - 95f * scale
                         rotate(degrees = 15f, pivot = Offset(phoneShadowCx, phoneShadowCy)) {
                             drawLine(
                                 color = shadowColor,
@@ -1576,15 +1580,15 @@ fun SextantScreen(
                             moveTo(cx + 10f * scale, cy + 10f * scale)
                             lineTo(cx - 20f * scale, cy + 80f * scale)
 
-                            // Left Arm (holding phone up and forward)
+                            // Left Arm (resting down)
                             moveTo(cx - 5f * scale, cy - 35f * scale)
-                            lineTo(cx - 40f * scale, cy - 30f * scale) // elbow out
-                            lineTo(cx - 10f * scale, cy - 75f * scale) // hand up near head
+                            lineTo(cx - 20f * scale, cy - 10f * scale) // elbow down/out
+                            lineTo(cx - 15f * scale, cy + 20f * scale) // hand down
 
-                            // Right Arm (curving around to hold phone)
+                            // Right Arm (reaching high above head to hold phone from bottom)
                             moveTo(cx + 5f * scale, cy - 35f * scale)
-                            lineTo(cx + 40f * scale, cy - 20f * scale) // elbow out right
-                            lineTo(cx + 10f * scale, cy - 80f * scale) // hand up
+                            lineTo(cx + 35f * scale, cy - 40f * scale) // elbow out right
+                            lineTo(cx + 20f * scale, cy - 100f * scale) // hand high up
                         }
 
                         drawPath(
@@ -1593,9 +1597,9 @@ fun SextantScreen(
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * scale)
                         )
 
-                        // --- 4. Draw Phone (Held up) ---
-                        val phoneCx = cx - 5f * scale
-                        val phoneCy = cy - 85f * scale
+                        // --- 4. Draw Phone (Held up higher, grasped at bottom right) ---
+                        val phoneCx = cx + 5f * scale
+                        val phoneCy = cy - 120f * scale
 
                         // Screen is facing viewer, tilted slightly up
                         val phonePath = androidx.compose.ui.graphics.Path().apply {
