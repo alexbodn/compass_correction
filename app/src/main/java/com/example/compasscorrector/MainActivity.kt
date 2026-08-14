@@ -1466,140 +1466,164 @@ fun SextantScreen(
         }
 
         val staticInstructionsIllustration = @Composable { modifier: Modifier ->
-            Column(modifier = modifier.fillMaxWidth()) {
+            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "Hold phone horizontally above your head.",
+                    "Hold phone screen facing you. Sun is behind you. Tilt to minimize front shadow.",
                     color = foregroundColor,
                     fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 8.dp, start = 8.dp),
-                    fontWeight = FontWeight.Bold
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
                 )
 
-                Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    // Left 1/3: Profile View
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
-                            Text("1. Profile", fontSize = 10.sp, color = foregroundColor, modifier = Modifier.padding(bottom = 4.dp))
-                            Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                                val canvasWidth = size.width
-                                val canvasHeight = size.height
-                                val scale = canvasHeight / 150f
-                                val cx = canvasWidth / 2 + 10f * scale
-                                val cy = canvasHeight / 2 + 10f * scale
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val canvasWidth = size.width
+                        val canvasHeight = size.height
 
-                                // Sun
-                                val sunCx = cx + 30f * scale
-                                val sunCy = cy - 50f * scale
-                                drawCircle(color = Color(0xFFFFD700), radius = 10f * scale, center = Offset(sunCx, sunCy))
+                        // Base scale
+                        val scale = minOf(canvasWidth, canvasHeight) / 200f
 
-                                // Phone blocking sun rays
-                                val phoneCx = cx - 20f * scale
-                                val phoneCy = cy - 40f * scale
-                                rotate(degrees = 30f, pivot = Offset(phoneCx, phoneCy)) {
-                                    drawRect(color = Color.Gray, topLeft = Offset(phoneCx - 15f * scale, phoneCy - 2f * scale), size = androidx.compose.ui.geometry.Size(30f * scale, 4f * scale))
-                                }
+                        // Center is shifted a bit down and right since shadow goes up and left
+                        val cx = canvasWidth * 0.6f
+                        val cy = canvasHeight * 0.6f
 
-                                // Sun Rays stopped by phone
-                                drawLine(color = Color(0xFFFFD700), start = Offset(sunCx, sunCy), end = Offset(phoneCx + 5f * scale, phoneCy - 15f * scale), strokeWidth = 1f * scale)
-                                drawLine(color = Color(0xFFFFD700), start = Offset(sunCx, sunCy), end = Offset(phoneCx + 15f * scale, phoneCy - 5f * scale), strokeWidth = 1f * scale)
+                        // --- Colors ---
+                        // Light blue for person, gray for shadows, gold for sun
+                        val personColor = if (foregroundColor == Color.White) Color(0xFF64B5F6) else Color(0xFF2196F3)
+                        val shadowColor = Color.Gray.copy(alpha = 0.6f)
+                        val sunColor = Color(0xFFFFD700)
 
-                                // Person
-                                val bodyPath = androidx.compose.ui.graphics.Path().apply {
-                                    addOval(androidx.compose.ui.geometry.Rect(left = cx - 8f * scale, top = cy - 30f * scale, right = cx + 8f * scale, bottom = cy - 14f * scale))
-                                    moveTo(cx, cy - 14f * scale)
-                                    lineTo(cx, cy + 20f * scale)
-                                    lineTo(cx - 5f * scale, cy + 50f * scale)
-                                    moveTo(cx, cy + 20f * scale)
-                                    lineTo(cx + 5f * scale, cy + 50f * scale)
-                                }
-                                drawPath(path = bodyPath, color = foregroundColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * scale))
+                        // --- 1. Draw Sun (Top Right) ---
+                        val sunCx = cx + 50f * scale
+                        val sunCy = cy - 100f * scale
+                        drawCircle(color = sunColor, radius = 25f * scale, center = Offset(sunCx, sunCy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale))
 
-                                // Arm holding phone
-                                drawLine(color = foregroundColor, start = Offset(cx, cy - 10f * scale), end = Offset(phoneCx, phoneCy), strokeWidth = 3f * scale)
+                        // Sun Rays (pointing down-left towards phone)
+                        drawLine(color = sunColor, start = Offset(sunCx - 20f * scale, sunCy + 10f * scale), end = Offset(sunCx - 50f * scale, sunCy + 25f * scale), strokeWidth = 2f * scale)
+                        drawLine(color = sunColor, start = Offset(sunCx - 10f * scale, sunCy + 20f * scale), end = Offset(sunCx - 35f * scale, sunCy + 45f * scale), strokeWidth = 2f * scale)
+                        drawLine(color = sunColor, start = Offset(sunCx, sunCy + 25f * scale), end = Offset(sunCx - 15f * scale, sunCy + 60f * scale), strokeWidth = 2f * scale)
 
-                                // Ground
-                                drawLine(color = foregroundColor.copy(alpha = 0.3f), start = Offset(0f, cy + 50f * scale), end = Offset(canvasWidth, cy + 50f * scale), strokeWidth = 2f)
-                            }
-                            Text("Tilt to align with rays", fontSize = 9.sp, color = foregroundColor, textAlign = TextAlign.Center, lineHeight = 10.sp)
+                        // --- 2. Draw Shadow on Ground (drawn first so it's behind) ---
+                        // Ground plane perspective: moving left and slightly up
+                        val shadowOffsetX = -80f * scale
+                        val shadowOffsetY = -30f * scale
+
+                        // Shadow Body Path
+                        val shadowPath = androidx.compose.ui.graphics.Path().apply {
+                            // Shadow Head
+                            addOval(androidx.compose.ui.geometry.Rect(
+                                left = cx + shadowOffsetX - 20f * scale,
+                                top = cy + shadowOffsetY - 80f * scale,
+                                right = cx + shadowOffsetX + 20f * scale,
+                                bottom = cy + shadowOffsetY - 40f * scale
+                            ))
+                            // Shadow Torso
+                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 40f * scale)
+                            lineTo(cx + shadowOffsetX + 10f * scale, cy + shadowOffsetY)
+
+                            // Shadow Legs
+                            moveTo(cx + shadowOffsetX + 10f * scale, cy + shadowOffsetY)
+                            lineTo(cx, cy + 60f * scale) // Connect back to base of real person
+
+                            moveTo(cx + shadowOffsetX + 10f * scale, cy + shadowOffsetY)
+                            lineTo(cx - 30f * scale, cy + 50f * scale) // Back leg
+
+                            // Shadow Arm holding phone
+                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 30f * scale)
+                            lineTo(cx + shadowOffsetX + 25f * scale, cy + shadowOffsetY - 75f * scale) // arm reaching up
                         }
-                    }
 
-                    // Middle 1/3: View Upwards
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
-                            Text("2. View Up", fontSize = 10.sp, color = foregroundColor, modifier = Modifier.padding(bottom = 4.dp))
-                            Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                                val canvasWidth = size.width
-                                val canvasHeight = size.height
-                                val scale = canvasHeight / 150f
-                                val cx = canvasWidth / 2
-                                val cy = canvasHeight / 2
+                        drawPath(
+                            path = shadowPath,
+                            color = shadowColor,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale)
+                        )
 
-                                // Screen View (looking up from behind)
-                                drawRect(
-                                    color = Color.LightGray,
-                                    topLeft = Offset(cx - 25f * scale, cy - 30f * scale),
-                                    size = androidx.compose.ui.geometry.Size(50f * scale, 30f * scale)
-                                )
-                                drawRect(
-                                    color = Color.Black,
-                                    topLeft = Offset(cx - 23f * scale, cy - 28f * scale),
-                                    size = androidx.compose.ui.geometry.Size(46f * scale, 26f * scale),
-                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f)
-                                )
-
-                                // Arms coming from bottom
-                                drawLine(color = foregroundColor, start = Offset(cx - 30f * scale, cy + 40f * scale), end = Offset(cx - 25f * scale, cy), strokeWidth = 6f * scale)
-                                drawLine(color = foregroundColor, start = Offset(cx + 30f * scale, cy + 40f * scale), end = Offset(cx + 25f * scale, cy), strokeWidth = 6f * scale)
-
-                                // Hands
-                                drawCircle(color = foregroundColor, radius = 5f * scale, center = Offset(cx - 25f * scale, cy))
-                                drawCircle(color = foregroundColor, radius = 5f * scale, center = Offset(cx + 25f * scale, cy))
-                            }
-                            Text("Lock altitude\nreading on screen", fontSize = 9.sp, color = foregroundColor, textAlign = TextAlign.Center, lineHeight = 10.sp)
+                        // Shadow of the phone itself (thick line, edge-on to sun)
+                        val phoneShadowCx = cx + shadowOffsetX + 25f * scale
+                        val phoneShadowCy = cy + shadowOffsetY - 75f * scale
+                        rotate(degrees = 15f, pivot = Offset(phoneShadowCx, phoneShadowCy)) {
+                            drawLine(
+                                color = shadowColor,
+                                start = Offset(phoneShadowCx - 15f * scale, phoneShadowCy),
+                                end = Offset(phoneShadowCx + 15f * scale, phoneShadowCy),
+                                strokeWidth = 6f * scale,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
                         }
-                    }
 
-                    // Right 1/3: View Downwards
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
-                            Text("3. View Down", fontSize = 10.sp, color = foregroundColor, modifier = Modifier.padding(bottom = 4.dp))
-                            Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                                val canvasWidth = size.width
-                                val canvasHeight = size.height
-                                val scale = canvasHeight / 150f
-                                val cx = canvasWidth / 2
-                                val cy = canvasHeight / 2
 
-                                // Ground Area
-                                drawRect(
-                                    color = foregroundColor.copy(alpha = 0.1f),
-                                    topLeft = Offset(0f, 0f),
-                                    size = androidx.compose.ui.geometry.Size(canvasWidth, canvasHeight)
-                                )
+                        // --- 3. Draw Person (Viewed from South-West, facing North) ---
+                        val bodyPath = androidx.compose.ui.graphics.Path().apply {
+                            // Head
+                            addOval(androidx.compose.ui.geometry.Rect(
+                                left = cx - 20f * scale,
+                                top = cy - 80f * scale,
+                                right = cx + 20f * scale,
+                                bottom = cy - 40f * scale
+                            ))
 
-                                // Phone shadow on ground
-                                drawRect(
-                                    color = foregroundColor.copy(alpha = 0.4f),
-                                    topLeft = Offset(cx - 20f * scale, cy - 5f * scale),
-                                    size = androidx.compose.ui.geometry.Size(40f * scale, 10f * scale)
-                                )
+                            // Torso (leaning slightly forward/right)
+                            moveTo(cx, cy - 40f * scale)
+                            lineTo(cx + 10f * scale, cy + 10f * scale)
 
-                                // Hands shadows
-                                drawCircle(color = foregroundColor.copy(alpha = 0.4f), radius = 6f * scale, center = Offset(cx - 25f * scale, cy))
-                                drawCircle(color = foregroundColor.copy(alpha = 0.4f), radius = 6f * scale, center = Offset(cx + 25f * scale, cy))
+                            // Left Leg (Stepping forward / right)
+                            moveTo(cx + 10f * scale, cy + 10f * scale)
+                            lineTo(cx + 30f * scale, cy + 70f * scale)
 
-                                // Arms shadows extending down
-                                drawLine(color = foregroundColor.copy(alpha = 0.4f), start = Offset(cx - 25f * scale, cy), end = Offset(cx - 30f * scale, cy + 40f * scale), strokeWidth = 8f * scale)
-                                drawLine(color = foregroundColor.copy(alpha = 0.4f), start = Offset(cx + 25f * scale, cy), end = Offset(cx + 30f * scale, cy + 40f * scale), strokeWidth = 8f * scale)
-                            }
-                            Text("Minimize phone\nshadow to an edge", fontSize = 9.sp, color = foregroundColor, textAlign = TextAlign.Center, lineHeight = 10.sp)
+                            // Right Leg (Back / Left)
+                            moveTo(cx + 10f * scale, cy + 10f * scale)
+                            lineTo(cx - 20f * scale, cy + 80f * scale)
+
+                            // Left Arm (holding phone up and forward)
+                            moveTo(cx - 5f * scale, cy - 35f * scale)
+                            lineTo(cx - 40f * scale, cy - 30f * scale) // elbow out
+                            lineTo(cx - 10f * scale, cy - 75f * scale) // hand up near head
+
+                            // Right Arm (curving around to hold phone)
+                            moveTo(cx + 5f * scale, cy - 35f * scale)
+                            lineTo(cx + 40f * scale, cy - 20f * scale) // elbow out right
+                            lineTo(cx + 10f * scale, cy - 80f * scale) // hand up
                         }
+
+                        drawPath(
+                            path = bodyPath,
+                            color = personColor,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * scale)
+                        )
+
+                        // --- 4. Draw Phone (Held up) ---
+                        val phoneCx = cx - 5f * scale
+                        val phoneCy = cy - 85f * scale
+
+                        // Screen is facing viewer, tilted slightly up
+                        val phonePath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(phoneCx - 20f * scale, phoneCy - 10f * scale) // top left
+                            lineTo(phoneCx + 15f * scale, phoneCy - 20f * scale) // top right
+                            lineTo(phoneCx + 25f * scale, phoneCy + 15f * scale) // bottom right
+                            lineTo(phoneCx - 10f * scale, phoneCy + 25f * scale) // bottom left
+                            close()
+                        }
+
+                        drawPath(
+                            path = phonePath,
+                            color = personColor,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale)
+                        )
+
+                        // Phone shadow indicator on phone
+                        drawLine(
+                            color = personColor,
+                            start = Offset(phoneCx - 10f * scale, phoneCy + 5f * scale),
+                            end = Offset(phoneCx + 5f * scale, phoneCy),
+                            strokeWidth = 3f * scale
+                        )
+
                     }
                 }
             }
         }
-
         // Top 60%: Rotated Interactive Controls
         BoxWithConstraints(
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
