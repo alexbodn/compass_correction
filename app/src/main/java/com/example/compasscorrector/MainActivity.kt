@@ -39,6 +39,13 @@ import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.sin
 
+data class SextantLockedData(
+    val altitude: Float,
+    val declination: Float,
+    val deducedLatitude: Float?,
+    val assumedOrDeducedLongitude: Float?
+)
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var sensorHelper: SensorHelper
@@ -114,9 +121,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var pointPeakAtSolar by remember { mutableStateOf(false) }
     var solarUseClockTimezoneCorrection by remember { mutableStateOf(false) }
     var solarUseMalleableWatchDial by remember { mutableStateOf(false) }
-    var userLockedAltitude by remember { mutableStateOf<Float?>(null) }
+    var sextantLockedData by remember { mutableStateOf<SextantLockedData?>(null) }
     var useCompassForFullLocation by remember { mutableStateOf(false) }
-    var userLockedAzimuth by remember { mutableStateOf<Float?>(null) }
     var livePitch by remember { mutableStateOf(0f) }
     var liveRoll by remember { mutableStateOf(0f) }
 
@@ -441,8 +447,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         },
                         livePitch = livePitch,
                         liveRoll = liveRoll,
-                        userLockedAltitude = userLockedAltitude,
-                        onUserLockedAltitudeChange = { userLockedAltitude = it },
+                        lockedData = sextantLockedData,
+                        onLockedDataChange = { sextantLockedData = it },
                         useCompassForFullLocation = useCompassForFullLocation,
                         onUseCompassForFullLocationChange = { useCompassForFullLocation = it },
                         magneticAzimuth = magneticAzimuth,
@@ -491,7 +497,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it },
                         useMalleableWatchDial = solarUseMalleableWatchDial,
                         onUseMalleableWatchDialChange = { solarUseMalleableWatchDial = it },
-                        userLockedAltitude = userLockedAltitude
+                        userLockedAltitude = sextantLockedData?.altitude
                     )
                 } else if (selectedTabIndex == 1) {
                     CelestialToolTab(
@@ -524,7 +530,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         onUseClockTimezoneCorrectionChange = { solarUseClockTimezoneCorrection = it },
                         useMalleableWatchDial = solarUseMalleableWatchDial,
                         onUseMalleableWatchDialChange = { solarUseMalleableWatchDial = it },
-                        userLockedAltitude = userLockedAltitude
+                        userLockedAltitude = sextantLockedData?.altitude
                     )
                 }
             } // End of outer tab Box
@@ -1327,8 +1333,8 @@ fun SextantScreen(
     onIsNorthernHemisphereChange: (Boolean) -> Unit,
     livePitch: Float,
     liveRoll: Float,
-    userLockedAltitude: Float?,
-    onUserLockedAltitudeChange: (Float?) -> Unit,
+    lockedData: SextantLockedData?,
+    onLockedDataChange: (SextantLockedData?) -> Unit,
     useCompassForFullLocation: Boolean,
     onUseCompassForFullLocationChange: (Boolean) -> Unit,
     magneticAzimuth: Float,
@@ -1341,47 +1347,50 @@ fun SextantScreen(
 
 
         val interactiveControlsData = @Composable { modifier: Modifier ->
+            // Pre-calculate live values
+            var liveTrueAzimuth = magneticAzimuth
+            if (useTrueNorth && location != null) {
+                val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
+                liveTrueAzimuth = (magneticAzimuth + declination + 360f) % 360f
+            }
+            val liveSunAzimuth = if (isReverseLandscape) {
+                (liveTrueAzimuth + 90f) % 360f
+            } else {
+                (liveTrueAzimuth - 90f + 360f) % 360f
+            }
+            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(liveAlt, liveSunAzimuth, sunData.declination, currentTimeMillis) else null
+            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(liveAlt, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
+
+            val displayAltitude = lockedData?.altitude ?: liveAlt
+            val displayDeclination = lockedData?.declination ?: sunData.declination
+
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Measured Altitude: ${String.format("%.1f°", if (userLockedAltitude != null) userLockedAltitude else liveAlt)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                    Text("Sun Declination: ${String.format("%.2f°", sunData.declination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Measured Altitude: ${String.format("%.1f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Sun Declination: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                 }
 
-                if (userLockedAltitude != null) {
+                if (lockedData != null) {
                     if (useCompassForFullLocation) {
-                        var trueAzimuth = magneticAzimuth
-                        if (useTrueNorth && location != null) {
-                            val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
-                            trueAzimuth = (magneticAzimuth + declination + 360f) % 360f
-                        }
-
-                        val sunAzimuth = if (isReverseLandscape) {
-                            (trueAzimuth + 90f) % 360f
-                        } else {
-                            (trueAzimuth - 90f + 360f) % 360f
-                        }
-
-                        val fullLoc = LocationDeducer.deduceFullLocation(userLockedAltitude, sunAzimuth, sunData.declination, currentTimeMillis)
-                        if (fullLoc != null) {
+                        if (lockedData.deducedLatitude != null && lockedData.assumedOrDeducedLongitude != null) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Deduced Lat: ${String.format("%.2f°", fullLoc.first)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                                Text("Deduced Lon: ${String.format("%.2f°", fullLoc.second)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Text("Deduced Lon: ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
                             }
                         } else {
                             Text("Could not solve spherical math for this attitude.", color = Color.Red)
                         }
                     } else {
-                        val deducedLat = LatitudeDeducer.deduceLatitude(userLockedAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere)
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            if (deducedLat != null) {
-                                Text("Deduced Lat: ${String.format("%.2f°", deducedLat)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            if (lockedData.deducedLatitude != null) {
+                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Could not deduce Lat.", color = Color.Red)
                             }
-                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", sunData.estimatedLongitude)}", color = foregroundColor)
+                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = foregroundColor)
                         }
                     }
                 }
@@ -1419,10 +1428,21 @@ fun SextantScreen(
 
                 Spacer(modifier = Modifier.weight(1f))
                 Button(
-                    onClick = { onUserLockedAltitudeChange(liveAlt) },
+                    onClick = {
+                        if (lockedData == null) {
+                            onLockedDataChange(SextantLockedData(
+                                altitude = liveAlt,
+                                declination = sunData.declination.toFloat(),
+                                deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
+                                assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat()
+                            ))
+                        } else {
+                            onLockedDataChange(null)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
                 ) {
-                    Text(if (userLockedAltitude == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+                    Text(if (lockedData == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
                 }
             }
         }
@@ -1438,38 +1458,183 @@ fun SextantScreen(
 
                 Box(modifier = Modifier.fillMaxWidth().weight(1f).background(Color.Transparent), contentAlignment = Alignment.Center) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val cx = size.width / 2
-                        val cy = size.height / 2
+                        val canvasWidth = size.width
+                        val canvasHeight = size.height
 
-                        drawCircle(color = foregroundColor, radius = 15f, center = Offset(cx, cy)) // Head
-                        drawLine(color = foregroundColor, start = Offset(cx, cy + 15f), end = Offset(cx, cy + 50f), strokeWidth = 5f) // Body
-                        drawLine(color = foregroundColor, start = Offset(cx, cy + 50f), end = Offset(cx - 15f, cy + 90f), strokeWidth = 5f) // Leg L
-                        drawLine(color = foregroundColor, start = Offset(cx, cy + 50f), end = Offset(cx + 15f, cy + 90f), strokeWidth = 5f) // Leg R
+                        // Define a base scale based on canvas height to make it fit nicely
+                        val scale = canvasHeight / 250f
 
-                        // Arm holding phone up
-                        drawLine(color = foregroundColor, start = Offset(cx, cy + 25f), end = Offset(cx - 30f, cy - 10f), strokeWidth = 5f) // Arm
+                        // Center offsets
+                        val cx = canvasWidth / 2 + (20f * scale) // shift right slightly to make room for shadow
+                        val cy = canvasHeight / 2 + (20f * scale)
 
-                        // Phone (Landscape, tilted)
-                        rotate(degrees = 30f, pivot = Offset(cx - 35f, cy - 15f)) {
+                        // --- 1. Draw the Human Silhouette ---
+                        val bodyPath = androidx.compose.ui.graphics.Path().apply {
+                            // Head
+                            addOval(androidx.compose.ui.geometry.Rect(
+                                left = cx - 15f * scale,
+                                top = cy - 60f * scale,
+                                right = cx + 15f * scale,
+                                bottom = cy - 30f * scale
+                            ))
+                            // Torso
+                            moveTo(cx - 5f * scale, cy - 30f * scale)
+                            lineTo(cx + 5f * scale, cy - 30f * scale)
+                            lineTo(cx + 10f * scale, cy + 30f * scale)
+                            lineTo(cx - 10f * scale, cy + 30f * scale)
+                            close()
+
+                            // Legs (Simplified)
+                            moveTo(cx - 8f * scale, cy + 30f * scale)
+                            lineTo(cx - 12f * scale, cy + 90f * scale)
+                            lineTo(cx - 2f * scale, cy + 90f * scale)
+                            lineTo(cx, cy + 30f * scale)
+
+                            moveTo(cx, cy + 30f * scale)
+                            lineTo(cx + 8f * scale, cy + 90f * scale)
+                            lineTo(cx + 18f * scale, cy + 90f * scale)
+                            lineTo(cx + 8f * scale, cy + 30f * scale)
+                        }
+
+                        drawPath(
+                            path = bodyPath,
+                            color = foregroundColor,
+                            style = androidx.compose.ui.graphics.drawscope.Fill
+                        )
+
+                        // Arm holding phone up (aiming left/upward)
+                        val armPath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(cx - 5f * scale, cy - 20f * scale) // Shoulder
+                            lineTo(cx - 40f * scale, cy - 50f * scale) // Hand
+                        }
+                        drawPath(
+                            path = armPath,
+                            color = foregroundColor,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 8f * scale, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                        )
+
+                        // --- 2. Draw the Phone ---
+                        val phoneCx = cx - 45f * scale
+                        val phoneCy = cy - 55f * scale
+                        rotate(degrees = 30f, pivot = Offset(phoneCx, phoneCy)) {
                             drawRect(
                                 color = Color.Gray,
-                                topLeft = Offset(cx - 50f, cy - 20f),
-                                size = androidx.compose.ui.geometry.Size(30f, 8f)
+                                topLeft = Offset(phoneCx - 20f * scale, phoneCy - 4f * scale),
+                                size = androidx.compose.ui.geometry.Size(40f * scale, 8f * scale)
                             )
                         }
 
-                        // Sun behind
-                        drawCircle(color = Color(0xFFFFD700), radius = 15f, center = Offset(cx + 50f, cy - 30f))
+                        // --- 3. Draw the Sun ---
+                        val sunCx = cx + 70f * scale
+                        val sunCy = cy - 80f * scale
+                        drawCircle(color = Color(0xFFFFD700), radius = 20f * scale, center = Offset(sunCx, sunCy))
 
-                        // Shadow line (thin) projected in front (left side)
+                        // --- 4. Draw Shadows and Ground ---
+                        // Ground Line
+                        drawLine(
+                            color = foregroundColor.copy(alpha = 0.3f),
+                            start = Offset(0f, cy + 90f * scale),
+                            end = Offset(canvasWidth, cy + 90f * scale),
+                            strokeWidth = 2f
+                        )
+
+                        // Human Shadow on ground (stretching left)
+                        val shadowPath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(cx - 10f * scale, cy + 90f * scale) // base of feet
+                            lineTo(cx - 90f * scale, cy + 90f * scale) // tip of head shadow
+                            lineTo(cx - 80f * scale, cy + 93f * scale)
+                            lineTo(cx + 10f * scale, cy + 93f * scale)
+                            close()
+                        }
+                        drawPath(
+                            path = shadowPath,
+                            color = foregroundColor.copy(alpha = 0.2f),
+                            style = androidx.compose.ui.graphics.drawscope.Fill
+                        )
+
+                        // Phone Shadow (thin line stretching further left)
+                        val phoneShadowX = cx - 120f * scale
                         drawLine(
                             color = foregroundColor.copy(alpha = 0.5f),
-                            start = Offset(cx - 35f, cy - 15f),
-                            end = Offset(cx - 80f, cy + 90f), // projecting down to ground
-                            strokeWidth = 2f,
+                            start = Offset(cx - 90f * scale, cy + 90f * scale), // Starts near hand shadow
+                            end = Offset(phoneShadowX, cy + 90f * scale),
+                            strokeWidth = 3f * scale
+                        )
+
+                        // --- 5. Draw Explanatory Labels and Arrows ---
+
+                        // Arrow pointing to phone shadow
+                        val isDark = foregroundColor == Color.White
+                        val arrowColor = if (isDark) Color(0xFF64B5F6) else Color.Blue
+                        drawLine(
+                            color = arrowColor,
+                            start = Offset(phoneShadowX - 20f * scale, cy + 60f * scale),
+                            end = Offset(phoneShadowX + 10f * scale, cy + 85f * scale),
+                            strokeWidth = 2f * scale
+                        )
+                        // Arrowhead
+                        drawLine(
+                            color = arrowColor,
+                            start = Offset(phoneShadowX + 10f * scale, cy + 85f * scale),
+                            end = Offset(phoneShadowX + 5f * scale, cy + 75f * scale),
+                            strokeWidth = 2f * scale
+                        )
+                        drawLine(
+                            color = arrowColor,
+                            start = Offset(phoneShadowX + 10f * scale, cy + 85f * scale),
+                            end = Offset(phoneShadowX + 0f * scale, cy + 82f * scale),
+                            strokeWidth = 2f * scale
+                        )
+
+                        // Arrow pointing from eyes to screen
+                        val eyeX = cx - 20f * scale
+                        val eyeY = cy - 45f * scale
+                        val screenTargetX = phoneCx
+                        val screenTargetY = phoneCy + 5f * scale
+                        drawLine(
+                            color = arrowColor,
+                            start = Offset(eyeX, eyeY),
+                            end = Offset(screenTargetX, screenTargetY),
+                            strokeWidth = 2f * scale,
                             pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                         )
+                        // Arrowhead
+                        drawLine(
+                            color = arrowColor,
+                            start = Offset(screenTargetX, screenTargetY),
+                            end = Offset(screenTargetX + 5f * scale, screenTargetY + 5f * scale),
+                            strokeWidth = 2f * scale
+                        )
+                        drawLine(
+                            color = arrowColor,
+                            start = Offset(screenTargetX, screenTargetY),
+                            end = Offset(screenTargetX + 8f * scale, screenTargetY - 2f * scale),
+                            strokeWidth = 2f * scale
+                        )
                     }
+
+                    // Overlay Text Labels (using standard Compose Text for better readability)
+                    val isDark = foregroundColor == Color.White
+                    val textColor = if (isDark) Color(0xFF64B5F6) else Color.Blue
+                    Text(
+                        text = "aim to have it\nthinnest at the edge",
+                        color = textColor,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 16.dp, bottom = 40.dp)
+                    )
+
+                    Text(
+                        text = "lock altitude\nreading",
+                        color = textColor,
+                        fontSize = 10.sp,
+                        lineHeight = 12.sp,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(end = 40.dp, top = 20.dp)
+                    )
                 }
             }
         }
