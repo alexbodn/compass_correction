@@ -1548,15 +1548,20 @@ Press with the other hand the lock measurement button.""",
 
                         // Shadow Body Path
                         val shadowPath = androidx.compose.ui.graphics.Path().apply {
-                            // Shadow Head
+                            // Shadow Head (with profile nose)
                             addOval(androidx.compose.ui.geometry.Rect(
-                                left = cx + shadowOffsetX - 20f * scale,
+                                left = cx + shadowOffsetX - 15f * scale,
                                 top = cy + shadowOffsetY - 80f * scale,
-                                right = cx + shadowOffsetX + 20f * scale,
-                                bottom = cy + shadowOffsetY - 40f * scale
+                                right = cx + shadowOffsetX + 15f * scale,
+                                bottom = cy + shadowOffsetY - 45f * scale
                             ))
+                            // Shadow Nose
+                            moveTo(cx + shadowOffsetX - 12f * scale, cy + shadowOffsetY - 65f * scale)
+                            lineTo(cx + shadowOffsetX - 22f * scale, cy + shadowOffsetY - 60f * scale)
+                            lineTo(cx + shadowOffsetX - 12f * scale, cy + shadowOffsetY - 55f * scale)
+
                             // Shadow Torso
-                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 40f * scale)
+                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 45f * scale)
                             lineTo(cx + shadowOffsetX + 10f * scale, cy + shadowOffsetY)
 
                             // Shadow Legs
@@ -1566,13 +1571,19 @@ Press with the other hand the lock measurement button.""",
                             moveTo(cx + shadowOffsetX + 10f * scale, cy + shadowOffsetY)
                             lineTo(cx - 30f * scale, cy + 50f * scale) // Back leg
 
-                            // Shadow Right Arm (holding phone up)
-                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 30f * scale)
-                            lineTo(cx + shadowOffsetX + 30f * scale, cy + shadowOffsetY - 95f * scale)
+                            // Shadow Right Arm (curved elbow, holding phone high)
+                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 35f * scale)
+                            quadraticBezierTo(
+                                cx + shadowOffsetX + 25f * scale, cy + shadowOffsetY - 30f * scale, // control point (elbow out)
+                                cx + shadowOffsetX + 30f * scale, cy + shadowOffsetY - 95f * scale  // end point (hand high)
+                            )
 
-                            // Shadow Left Arm (resting down)
-                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 30f * scale)
-                            lineTo(cx + shadowOffsetX - 15f * scale, cy + shadowOffsetY + 10f * scale)
+                            // Shadow Left Arm (curved elbow, resting down)
+                            moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 35f * scale)
+                            quadraticBezierTo(
+                                cx + shadowOffsetX - 20f * scale, cy + shadowOffsetY - 10f * scale, // control point (elbow back)
+                                cx + shadowOffsetX - 10f * scale, cy + shadowOffsetY + 20f * scale  // end point (hand down)
+                            )
                         }
 
                         drawPath(
@@ -1581,15 +1592,15 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale)
                         )
 
-                        // Shadow of the phone itself (thick line, edge-on to sun)
+                        // Shadow of the phone itself (long edge-on line, held at bottom port)
                         val phoneShadowCx = cx + shadowOffsetX + 30f * scale
-                        val phoneShadowCy = cy + shadowOffsetY - 95f * scale
+                        val phoneShadowCy = cy + shadowOffsetY - 95f * scale // Hand is here (bottom of phone)
                         rotate(degrees = 15f, pivot = Offset(phoneShadowCx, phoneShadowCy)) {
                             drawLine(
                                 color = shadowColor,
-                                start = Offset(phoneShadowCx - 15f * scale, phoneShadowCy),
-                                end = Offset(phoneShadowCx + 15f * scale, phoneShadowCy),
-                                strokeWidth = 6f * scale,
+                                start = Offset(phoneShadowCx, phoneShadowCy), // Starts at hand
+                                end = Offset(phoneShadowCx - 38f * scale, phoneShadowCy), // Extends up and left (19x2 approx)
+                                strokeWidth = 5f * scale,
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
                         }
@@ -1599,14 +1610,25 @@ Press with the other hand the lock measurement button.""",
                         val bodyPath = androidx.compose.ui.graphics.Path().apply {
                             // Head
                             addOval(androidx.compose.ui.geometry.Rect(
-                                left = cx - 20f * scale,
+                                left = cx - 15f * scale,
                                 top = cy - 80f * scale,
-                                right = cx + 20f * scale,
-                                bottom = cy - 40f * scale
+                                right = cx + 15f * scale,
+                                bottom = cy - 45f * scale
                             ))
 
+                            // Nose Profile (pointing West/North-West)
+                            moveTo(cx - 12f * scale, cy - 65f * scale)
+                            lineTo(cx - 22f * scale, cy - 60f * scale)
+                            lineTo(cx - 12f * scale, cy - 55f * scale)
+
+                            // Glasses (Simple horizontal line across eye level with a drop)
+                            moveTo(cx - 18f * scale, cy - 68f * scale)
+                            lineTo(cx + 5f * scale, cy - 68f * scale)
+                            moveTo(cx - 12f * scale, cy - 68f * scale)
+                            lineTo(cx - 12f * scale, cy - 60f * scale)
+
                             // Torso (leaning slightly forward/right)
-                            moveTo(cx, cy - 40f * scale)
+                            moveTo(cx, cy - 45f * scale)
                             lineTo(cx + 10f * scale, cy + 10f * scale)
 
                             // Left Leg (Stepping forward / right)
@@ -1617,15 +1639,19 @@ Press with the other hand the lock measurement button.""",
                             moveTo(cx + 10f * scale, cy + 10f * scale)
                             lineTo(cx - 20f * scale, cy + 80f * scale)
 
-                            // Left Arm (resting down)
+                            // Left Arm (curved elbow, resting down)
                             moveTo(cx - 5f * scale, cy - 35f * scale)
-                            lineTo(cx - 20f * scale, cy - 10f * scale) // elbow down/out
-                            lineTo(cx - 15f * scale, cy + 20f * scale) // hand down
+                            quadraticBezierTo(
+                                cx - 25f * scale, cy - 10f * scale, // control point (elbow back)
+                                cx - 10f * scale, cy + 20f * scale  // end point (hand down)
+                            )
 
-                            // Right Arm (reaching high above head to hold phone from bottom)
+                            // Right Arm (curved elbow, reaching high above head to hold phone from bottom)
                             moveTo(cx + 5f * scale, cy - 35f * scale)
-                            lineTo(cx + 35f * scale, cy - 40f * scale) // elbow out right
-                            lineTo(cx + 20f * scale, cy - 100f * scale) // hand high up
+                            quadraticBezierTo(
+                                cx + 45f * scale, cy - 30f * scale, // control point (elbow out right)
+                                cx + 18f * scale, cy - 100f * scale // hand high up
+                            )
                         }
 
                         drawPath(
@@ -1634,16 +1660,22 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * scale)
                         )
 
-                        // --- 4. Draw Phone (Held up higher, grasped at bottom right) ---
-                        val phoneCx = cx + 5f * scale
-                        val phoneCy = cy - 120f * scale
+                        // --- 4. Draw Phone (10:19 ratio, held at bottom port) ---
+                        // Hand is at (cx + 18f * scale, cy - 100f * scale)
+                        val phoneBottomRightX = cx + 18f * scale
+                        val phoneBottomRightY = cy - 100f * scale
 
-                        // Screen is facing viewer, tilted slightly up
+                        // 10:19 proportion approx: width = 20, height = 38
+                        // Tilted to align with sun rays and viewer perspective
                         val phonePath = androidx.compose.ui.graphics.Path().apply {
-                            moveTo(phoneCx - 20f * scale, phoneCy - 10f * scale) // top left
-                            lineTo(phoneCx + 15f * scale, phoneCy - 20f * scale) // top right
-                            lineTo(phoneCx + 25f * scale, phoneCy + 15f * scale) // bottom right
-                            lineTo(phoneCx - 10f * scale, phoneCy + 25f * scale) // bottom left
+                            // Bottom Right (in hand)
+                            moveTo(phoneBottomRightX, phoneBottomRightY)
+                            // Bottom Left
+                            lineTo(phoneBottomRightX - 20f * scale, phoneBottomRightY + 5f * scale)
+                            // Top Left (long edge)
+                            lineTo(phoneBottomRightX - 35f * scale, phoneBottomRightY - 33f * scale)
+                            // Top Right
+                            lineTo(phoneBottomRightX - 15f * scale, phoneBottomRightY - 38f * scale)
                             close()
                         }
 
@@ -1653,11 +1685,25 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale)
                         )
 
-                        // Phone shadow indicator on phone
+                        // Phone screen detail (inner rect) to show it's a screen
+                        val innerPhonePath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(phoneBottomRightX - 5f * scale, phoneBottomRightY - 3f * scale) // Bottom Right
+                            lineTo(phoneBottomRightX - 20f * scale, phoneBottomRightY + 1f * scale) // Bottom Left
+                            lineTo(phoneBottomRightX - 32f * scale, phoneBottomRightY - 31f * scale) // Top Left
+                            lineTo(phoneBottomRightX - 17f * scale, phoneBottomRightY - 35f * scale) // Top Right
+                            close()
+                        }
+                        drawPath(
+                            path = innerPhonePath,
+                            color = personColor.copy(alpha = 0.5f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f * scale)
+                        )
+
+                        // Phone shadow indicator on phone (thin edge)
                         drawLine(
                             color = personColor,
-                            start = Offset(phoneCx - 10f * scale, phoneCy + 5f * scale),
-                            end = Offset(phoneCx + 5f * scale, phoneCy),
+                            start = Offset(phoneBottomRightX - 35f * scale, phoneBottomRightY - 33f * scale),
+                            end = Offset(phoneBottomRightX - 20f * scale, phoneBottomRightY + 5f * scale),
                             strokeWidth = 3f * scale
                         )
 
