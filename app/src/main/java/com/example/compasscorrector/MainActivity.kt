@@ -1555,9 +1555,9 @@ Press with the other hand the lock measurement button.""",
                                 right = cx + shadowOffsetX + 15f * scale,
                                 bottom = cy + shadowOffsetY - 45f * scale
                             ))
-                            // Shadow Nose
+                            // Sharp Shadow Nose
                             moveTo(cx + shadowOffsetX - 12f * scale, cy + shadowOffsetY - 65f * scale)
-                            lineTo(cx + shadowOffsetX - 22f * scale, cy + shadowOffsetY - 60f * scale)
+                            lineTo(cx + shadowOffsetX - 25f * scale, cy + shadowOffsetY - 60f * scale)
                             lineTo(cx + shadowOffsetX - 12f * scale, cy + shadowOffsetY - 55f * scale)
 
                             // Shadow Torso
@@ -1592,15 +1592,15 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale)
                         )
 
-                        // Shadow of the phone itself (long edge-on line, held at bottom port)
+                        // Shadow of the phone itself (horizontal, held at bottom port)
                         val phoneShadowCx = cx + shadowOffsetX + 30f * scale
-                        val phoneShadowCy = cy + shadowOffsetY - 95f * scale // Hand is here (bottom of phone)
+                        val phoneShadowCy = cy + shadowOffsetY - 95f * scale // Hand is here
                         rotate(degrees = 15f, pivot = Offset(phoneShadowCx, phoneShadowCy)) {
                             drawLine(
                                 color = shadowColor,
-                                start = Offset(phoneShadowCx, phoneShadowCy), // Starts at hand
-                                end = Offset(phoneShadowCx - 38f * scale, phoneShadowCy), // Extends up and left (19x2 approx)
-                                strokeWidth = 5f * scale,
+                                start = Offset(phoneShadowCx - 19f * scale, phoneShadowCy), // Extends left and right horizontally
+                                end = Offset(phoneShadowCx + 19f * scale, phoneShadowCy),
+                                strokeWidth = 3f * scale, // Thinner because edge-on from long side
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
                         }
@@ -1660,22 +1660,22 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f * scale)
                         )
 
-                        // --- 4. Draw Phone (10:19 ratio, held at bottom port) ---
+                        // --- 4. Draw Phone (10:19 ratio HORIZONTAL, held at right side) ---
                         // Hand is at (cx + 18f * scale, cy - 100f * scale)
-                        val phoneBottomRightX = cx + 18f * scale
-                        val phoneBottomRightY = cy - 100f * scale
+                        val phoneRightX = cx + 18f * scale
+                        val phoneRightY = cy - 100f * scale
 
-                        // 10:19 proportion approx: width = 20, height = 38
+                        // Horizontal 10:19 proportion approx: width = 38, height = 20
                         // Tilted to align with sun rays and viewer perspective
                         val phonePath = androidx.compose.ui.graphics.Path().apply {
-                            // Bottom Right (in hand)
-                            moveTo(phoneBottomRightX, phoneBottomRightY)
-                            // Bottom Left
-                            lineTo(phoneBottomRightX - 20f * scale, phoneBottomRightY + 5f * scale)
-                            // Top Left (long edge)
-                            lineTo(phoneBottomRightX - 35f * scale, phoneBottomRightY - 33f * scale)
-                            // Top Right
-                            lineTo(phoneBottomRightX - 15f * scale, phoneBottomRightY - 38f * scale)
+                            // Bottom Right (near hand)
+                            moveTo(phoneRightX, phoneRightY)
+                            // Bottom Left (long edge left)
+                            lineTo(phoneRightX - 38f * scale, phoneRightY + 5f * scale)
+                            // Top Left (short edge up)
+                            lineTo(phoneRightX - 43f * scale, phoneRightY - 15f * scale)
+                            // Top Right (long edge right)
+                            lineTo(phoneRightX - 5f * scale, phoneRightY - 20f * scale)
                             close()
                         }
 
@@ -1687,10 +1687,10 @@ Press with the other hand the lock measurement button.""",
 
                         // Phone screen detail (inner rect) to show it's a screen
                         val innerPhonePath = androidx.compose.ui.graphics.Path().apply {
-                            moveTo(phoneBottomRightX - 5f * scale, phoneBottomRightY - 3f * scale) // Bottom Right
-                            lineTo(phoneBottomRightX - 20f * scale, phoneBottomRightY + 1f * scale) // Bottom Left
-                            lineTo(phoneBottomRightX - 32f * scale, phoneBottomRightY - 31f * scale) // Top Left
-                            lineTo(phoneBottomRightX - 17f * scale, phoneBottomRightY - 35f * scale) // Top Right
+                            moveTo(phoneRightX - 5f * scale, phoneRightY - 3f * scale) // Bottom Right
+                            lineTo(phoneRightX - 36f * scale, phoneRightY + 1f * scale) // Bottom Left
+                            lineTo(phoneRightX - 40f * scale, phoneRightY - 14f * scale) // Top Left
+                            lineTo(phoneRightX - 9f * scale, phoneRightY - 18f * scale) // Top Right
                             close()
                         }
                         drawPath(
@@ -1699,11 +1699,11 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f * scale)
                         )
 
-                        // Phone shadow indicator on phone (thin edge)
+                        // Phone shadow indicator on phone (thin edge from sun)
                         drawLine(
                             color = personColor,
-                            start = Offset(phoneBottomRightX - 35f * scale, phoneBottomRightY - 33f * scale),
-                            end = Offset(phoneBottomRightX - 20f * scale, phoneBottomRightY + 5f * scale),
+                            start = Offset(phoneRightX - 43f * scale, phoneRightY - 15f * scale),
+                            end = Offset(phoneRightX - 38f * scale, phoneRightY + 5f * scale),
                             strokeWidth = 3f * scale
                         )
 
@@ -1712,20 +1712,42 @@ Press with the other hand the lock measurement button.""",
             }
         }
         // Top 60%: Rotated Interactive Controls
+        // Enforce landscape for 3D measurement tools
+        val isPortrait = kotlin.math.abs(liveRoll) < 45f || kotlin.math.abs(liveRoll) > 135f
+
         BoxWithConstraints(
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            val rotatedWidth = maxHeight
-            val rotatedHeight = maxWidth
+            if (isPortrait) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                    Text(
+                        text = "For measuring, please keep the phone horizontally.",
+                        color = foregroundColor,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Altitude: ${String.format("%.1f°", liveAlt)}",
+                        color = foregroundColor,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                val rotatedWidth = maxHeight
+                val rotatedHeight = maxWidth
 
-            Box(
-                modifier = Modifier
-                    .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
-                    .requiredSize(width = rotatedWidth, height = rotatedHeight)
-                    .padding(16.dp)
-            ) {
-                interactiveControlsData(Modifier.fillMaxSize())
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
+                        .requiredSize(width = rotatedWidth, height = rotatedHeight)
+                        .padding(16.dp)
+                ) {
+                    interactiveControlsData(Modifier.fillMaxSize())
+                }
             }
         }
 
