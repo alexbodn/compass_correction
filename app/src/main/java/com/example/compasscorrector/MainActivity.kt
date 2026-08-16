@@ -1398,37 +1398,15 @@ fun SextantScreen(
                 Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
                     Text("Measured Altitude: ${String.format("%.1f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                     Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                }
-
-                if (lockedData != null) {
-                    if (useCompassForFullLocation) {
-                        if (lockedData.deducedLatitude != null && lockedData.assumedOrDeducedLongitude != null) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                                Text("Deduced Lon: ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                            }
-                        } else {
-                            Text("Could not solve spherical math for this attitude.", color = Color.Red)
-                        }
-                    } else {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            if (lockedData.deducedLatitude != null) {
-                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("Could not deduce Lat.", color = Color.Red)
-                            }
-                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = foregroundColor)
-                        }
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (!useCompassForFullLocation) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
                         Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
                         Button(
                             onClick = { onIsNorthernHemisphereChange(true) },
@@ -1444,7 +1422,7 @@ fun SextantScreen(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }, horizontalArrangement = Arrangement.Start) {
                     Checkbox(
                         checked = useCompassForFullLocation,
                         onCheckedChange = null,
@@ -1453,7 +1431,7 @@ fun SextantScreen(
                     Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
                 }
                 if (useCompassForFullLocation) {
-                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), textAlign = TextAlign.Start)
 
                     // Use locked shadow azimuth if data is locked, otherwise use the live/manual logic
                     val displayShadowAzimuth = lockedData?.lockedShadowAzimuth ?: if (isManualShadowAzimuth) {
@@ -1468,19 +1446,23 @@ fun SextantScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                        Checkbox(
-                            checked = isManualShadowAzimuth,
-                            onCheckedChange = {
-                                isManualShadowAzimuth = it
-                                if (it && lockedData == null) {
-                                    // Pre-fill when switched to manual
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable(enabled = lockedData == null) {
+                                isManualShadowAzimuth = !isManualShadowAzimuth
+                                if (isManualShadowAzimuth && lockedData == null) {
                                     manualShadowAzimuthStr = String.format("%.1f", shadowAzimuth).replace(',', '.')
                                 }
-                            },
-                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                            enabled = lockedData == null
-                        )
-                        Text("Manual", color = foregroundColor, fontSize = 14.sp)
+                            }
+                        ) {
+                            Checkbox(
+                                checked = isManualShadowAzimuth,
+                                onCheckedChange = null,
+                                colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
+                                enabled = lockedData == null
+                            )
+                            Text("Manual", color = foregroundColor, fontSize = 14.sp)
+                        }
 
                         Spacer(modifier = Modifier.width(16.dp))
 
@@ -1498,6 +1480,27 @@ fun SextantScreen(
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
+
+                if (lockedData != null) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.Start) {
+                        if (useCompassForFullLocation) {
+                            if (lockedData.deducedLatitude != null && lockedData.assumedOrDeducedLongitude != null) {
+                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Text("Deduced Lon: ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Could not solve spherical math for this attitude.", color = Color.Red)
+                            }
+                        } else {
+                            if (lockedData.deducedLatitude != null) {
+                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Could not deduce Lat.", color = Color.Red)
+                            }
+                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = foregroundColor)
+                        }
+                    }
+                }
+
                 Button(
                     onClick = {
                         if (lockedData == null) {
