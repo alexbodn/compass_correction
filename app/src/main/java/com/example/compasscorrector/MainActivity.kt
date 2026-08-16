@@ -47,7 +47,8 @@ data class SextantLockedData(
     val altitude: Float,
     val declination: Float,
     val deducedLatitude: Float?,
-    val assumedOrDeducedLongitude: Float?
+    val assumedOrDeducedLongitude: Float?,
+    val lockedShadowAzimuth: Float? = null
 )
 
 class MainActivity : ComponentActivity() {
@@ -1454,26 +1455,46 @@ fun SextantScreen(
                 if (useCompassForFullLocation) {
                     Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
 
+                    // Use locked shadow azimuth if data is locked, otherwise use the live/manual logic
+                    val displayShadowAzimuth = lockedData?.lockedShadowAzimuth ?: if (isManualShadowAzimuth) {
+                        manualShadowAzimuthStr.toFloatOrNull() ?: shadowAzimuth
+                    } else {
+                        shadowAzimuth
+                    }
+
+                    if (!isManualShadowAzimuth && lockedData == null) {
+                        // Auto-update string while manual is off and not locked
+                        manualShadowAzimuthStr = String.format("%.1f", shadowAzimuth).replace(',', '.')
+                    }
+
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                         Checkbox(
                             checked = isManualShadowAzimuth,
-                            onCheckedChange = { isManualShadowAzimuth = it },
-                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
+                            onCheckedChange = {
+                                isManualShadowAzimuth = it
+                                if (it && lockedData == null) {
+                                    // Pre-fill when switched to manual
+                                    manualShadowAzimuthStr = String.format("%.1f", shadowAzimuth).replace(',', '.')
+                                }
+                            },
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
+                            enabled = lockedData == null
                         )
-                        Text("Manual Shadow Azimuth", color = foregroundColor, fontSize = 14.sp)
-                    }
-                    if (isManualShadowAzimuth) {
+                        Text("Manual", color = foregroundColor, fontSize = 14.sp)
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
                         OutlinedTextField(
-                            value = manualShadowAzimuthStr,
-                            onValueChange = { manualShadowAzimuthStr = it },
-                            label = { Text("Shadow Azimuth (°)") },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor)
+                            value = if (lockedData != null) String.format("%.1f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr,
+                            onValueChange = { manualShadowAzimuthStr = it.replace(',', '.') },
+                            label = { Text("Anti-Azimuth (°)") },
+                            modifier = Modifier.weight(1f).padding(end = 16.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor),
+                            enabled = isManualShadowAzimuth && lockedData == null,
+                            singleLine = true
                         )
-                    } else {
-                        Text("Live Shadow Azimuth: ${String.format("%.1f°", shadowAzimuth)}", color = foregroundColor, fontSize = 14.sp, modifier = Modifier.padding(start = 48.dp, bottom = 4.dp))
                     }
-                    Text("This is the direction the phone shadow points, directly opposite the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp))
+                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp))
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -1484,7 +1505,8 @@ fun SextantScreen(
                                 altitude = liveAlt,
                                 declination = sunData.declination.toFloat(),
                                 deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
-                                assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat()
+                                assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
+                                lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
                             ))
                         } else {
                             onLockedDataChange(null)
@@ -1618,14 +1640,14 @@ Press with the other hand the lock measurement button.""",
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f * scale)
                         )
 
-                        // Shadow of the phone itself (horizontal, held at bottom port)
+                        // Shadow of the phone itself (horizontal, extending from hand at port)
                         val phoneShadowCx = cx + shadowOffsetX + 30f * scale
                         val phoneShadowCy = cy + shadowOffsetY - 95f * scale // Hand is here
                         rotate(degrees = 15f, pivot = Offset(phoneShadowCx, phoneShadowCy)) {
                             drawLine(
                                 color = shadowColor,
-                                start = Offset(phoneShadowCx - 19f * scale, phoneShadowCy), // Extends left and right horizontally
-                                end = Offset(phoneShadowCx + 19f * scale, phoneShadowCy),
+                                start = Offset(phoneShadowCx, phoneShadowCy), // Starts at hand
+                                end = Offset(phoneShadowCx - 38f * scale, phoneShadowCy), // Extends fully left (width of 19x2)
                                 strokeWidth = 3f * scale, // Thinner because edge-on from long side
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
