@@ -1366,6 +1366,9 @@ fun SextantScreen(
         val (liveAlt, _, isReverseLandscape) = InclinationHelper.calculateAltitudeAndOrientation(livePitch, liveRoll)
 
 
+        var isManualShadowAzimuth by remember { mutableStateOf(false) }
+        var manualShadowAzimuthStr by remember { mutableStateOf("") }
+
         val interactiveControlsData = @Composable { modifier: Modifier ->
             // Pre-calculate live values
             var liveTrueAzimuth = magneticAzimuth
@@ -1378,7 +1381,13 @@ fun SextantScreen(
             } else {
                 (liveTrueAzimuth - 90f + 360f) % 360f
             }
-            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(liveAlt, liveSunAzimuth, sunData.declination, currentTimeMillis) else null
+            val shadowAzimuth = (liveSunAzimuth + 180f) % 360f
+            val effectiveSunAzimuth = if (isManualShadowAzimuth && manualShadowAzimuthStr.toFloatOrNull() != null) {
+                (manualShadowAzimuthStr.toFloat() + 180f) % 360f
+            } else {
+                liveSunAzimuth
+            }
+            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(liveAlt, effectiveSunAzimuth, sunData.declination, currentTimeMillis) else null
             val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(liveAlt, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
 
             val displayAltitude = lockedData?.altitude ?: liveAlt
@@ -1390,7 +1399,7 @@ fun SextantScreen(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Measured Altitude: ${String.format("%.1f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                    Text("Sun Declination: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                 }
 
                 if (lockedData != null) {
@@ -1443,7 +1452,28 @@ fun SextantScreen(
                     Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
                 }
                 if (useCompassForFullLocation) {
-                    Text("Warning: Check compass accuracy against the sun before calculating.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                        Checkbox(
+                            checked = isManualShadowAzimuth,
+                            onCheckedChange = { isManualShadowAzimuth = it },
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
+                        )
+                        Text("Manual Shadow Azimuth", color = foregroundColor, fontSize = 14.sp)
+                    }
+                    if (isManualShadowAzimuth) {
+                        OutlinedTextField(
+                            value = manualShadowAzimuthStr,
+                            onValueChange = { manualShadowAzimuthStr = it },
+                            label = { Text("Shadow Azimuth (°)") },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor)
+                        )
+                    } else {
+                        Text("Live Shadow Azimuth: ${String.format("%.1f°", shadowAzimuth)}", color = foregroundColor, fontSize = 14.sp, modifier = Modifier.padding(start = 48.dp, bottom = 4.dp))
+                    }
+                    Text("This is the direction the phone shadow points, directly opposite the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp))
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
@@ -1548,17 +1578,13 @@ Press with the other hand the lock measurement button.""",
 
                         // Shadow Body Path
                         val shadowPath = androidx.compose.ui.graphics.Path().apply {
-                            // Shadow Head (with profile nose)
+                            // Shadow Head (oval, no nose because sun is behind)
                             addOval(androidx.compose.ui.geometry.Rect(
                                 left = cx + shadowOffsetX - 15f * scale,
                                 top = cy + shadowOffsetY - 80f * scale,
                                 right = cx + shadowOffsetX + 15f * scale,
                                 bottom = cy + shadowOffsetY - 45f * scale
                             ))
-                            // Sharp Shadow Nose
-                            moveTo(cx + shadowOffsetX - 12f * scale, cy + shadowOffsetY - 65f * scale)
-                            lineTo(cx + shadowOffsetX - 25f * scale, cy + shadowOffsetY - 60f * scale)
-                            lineTo(cx + shadowOffsetX - 12f * scale, cy + shadowOffsetY - 55f * scale)
 
                             // Shadow Torso
                             moveTo(cx + shadowOffsetX, cy + shadowOffsetY - 45f * scale)
@@ -1723,16 +1749,9 @@ Press with the other hand the lock measurement button.""",
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
                     Text(
                         text = "For measuring, please keep the phone horizontally.",
-                        color = foregroundColor,
+                        color = Color.Red,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Altitude: ${String.format("%.1f°", liveAlt)}",
-                        color = foregroundColor,
-                        fontSize = 16.sp,
                         textAlign = TextAlign.Center
                     )
                 }
