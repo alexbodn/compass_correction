@@ -483,7 +483,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         Text("Correction Angle: N/A", color = Color.Gray, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     } else {
                         val currentDiff = if (selectedTabIndex == 0) solarDiff else lunarDiff
-                        Text(String.format("Correction Angle: %.1f°", currentDiff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format("Correction Angle: %.0f°", currentDiff), color = Color.Blue, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Box(modifier = Modifier.fillMaxSize().weight(1f)) {
@@ -635,9 +635,9 @@ fun CelestialToolTab(
         Column(modifier = Modifier.padding(4.dp).align(Alignment.TopStart)) {
             val debugText = """
                 Loc: ${if (location != null) "%.4f, %.4f".format(location!!.latitude, location!!.longitude) else "null"}
-                Magnetic Az: %.1f
+                Magnetic Az: %.0f
                 True North: $useTrueNorth
-                Rel ${if (isLunar) "Lunar" else "Solar"} Az: %.1f
+                Rel ${if (isLunar) "Lunar" else "Solar"} Az: %.0f
                 DST: $isDstActive
                 Hemi: ${if (isNorthernHemisphere) "N" else "S"}
             """.trimIndent().format(magneticAzimuth, relativeCelestialNorth)
@@ -1211,7 +1211,7 @@ fun CelestialToolTab(
                             )
                         } else {
                             Text(
-                                "Locked Altitude: ${String.format("%.1f°", userLockedAltitude)} (Set via Sextant)",
+                                "Locked Altitude: ${String.format("%.0f°", userLockedAltitude)} (Set via Sextant)",
                                 color = Color.Gray,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(start = 48.dp, bottom = 8.dp)
@@ -1399,7 +1399,7 @@ fun SextantScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                    Text("Measured Altitude: ${String.format("%.1f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Measured Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                     Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                 }
 
@@ -1442,7 +1442,7 @@ fun SextantScreen(
 
                     if (!isManualShadowAzimuth && lockedData == null) {
                         // Auto-update string while manual is off and not locked
-                        manualShadowAzimuthStr = String.format("%.1f", shadowAzimuth).replace(',', '.')
+                        manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
@@ -1451,7 +1451,7 @@ fun SextantScreen(
                             modifier = Modifier.clickable(enabled = lockedData == null) {
                                 isManualShadowAzimuth = !isManualShadowAzimuth
                                 if (isManualShadowAzimuth && lockedData == null) {
-                                    manualShadowAzimuthStr = String.format("%.1f", shadowAzimuth).replace(',', '.')
+                                    manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
                                 }
                             }
                         ) {
@@ -1467,7 +1467,7 @@ fun SextantScreen(
                         Spacer(modifier = Modifier.width(16.dp))
 
                         OutlinedTextField(
-                            value = if (lockedData != null) String.format("%.1f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr,
+                            value = if (lockedData != null) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr,
                             onValueChange = { manualShadowAzimuthStr = it.replace(',', '.') },
                             label = { Text("Anti-Azimuth (°)") },
                             modifier = Modifier.weight(1f).padding(end = 16.dp),
@@ -1820,15 +1820,23 @@ fun WatchStudyScreen(
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Watch Approximation Study", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
-        Text("Comparing 30° rigid watch dials vs True Sun Azimuth", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+        Text("Comparing 15° rigid watch dials vs True Sun Azimuth", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Latitude: ${String.format("%.0f°", selectedParallel)}", color = foregroundColor, modifier = Modifier.width(100.dp))
             Slider(
                 value = selectedParallel,
-                onValueChange = { selectedParallel = it },
+                onValueChange = {
+                    // Snap to 1 decimal place or just use the float directly for max smoothness
+                    selectedParallel = Math.round(it * 10f) / 10f
+                },
                 valueRange = 0f..90f,
-                steps = 8, // 10, 20, ... 80
+                // Remove steps to allow continuous float values. If they want 1 degree exactly, steps = 89 is for integers.
+                // The user said: "indeed please allow 1° granularity of the slider."
+                // Wait, if they want 1 degree granularity, `steps = 89` does exactly that. But maybe they want it smoother so they can hit exact angles?
+                // Actually they said "indeed please allow 1° granularity of the slider." Let's keep `steps = 89` but remove the float formatting "%.0f" if it's strictly integer, OR just remove steps and let them slide smoothly.
+                // A 1° granularity slider with 90 steps from 0 to 90 means steps = 89 (in compose: 0, 1...90 has 89 steps strictly inside).
+                steps = 89,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -1846,22 +1854,34 @@ fun WatchStudyScreen(
                 // Draw Base Watch Dial (Outer circle)
                 drawCircle(color = foregroundColor, radius = radius, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
 
+                val currentCal = java.util.Calendar.getInstance()
+                currentCal.timeInMillis = currentTimeMillis
+                val currentHour = currentCal.get(java.util.Calendar.HOUR_OF_DAY)
+
                 // Text Paint
                 val textPaint = android.graphics.Paint().apply {
                     color = android.graphics.Color.GRAY
-                    textSize = 40f
+                    textSize = 30f
                     textAlign = android.graphics.Paint.Align.CENTER
                 }
                 val trueTextPaint = android.graphics.Paint().apply {
                     color = if (foregroundColor == Color.White) android.graphics.Color.CYAN else android.graphics.Color.BLUE
-                    textSize = 40f
+                    textSize = 30f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    isFakeBoldText = true
+                }
+                val currentHourTextPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.RED
+                    textSize = 36f
                     textAlign = android.graphics.Paint.Align.CENTER
                     isFakeBoldText = true
                 }
 
-                // Draw the standard uniform watch face (12 hours = 30 deg each)
-                for (hour in 1..12) {
-                    val standardAngle = (hour * 30f) - 90f // 12 is at top (-90 deg)
+                // Draw the standard uniform watch face (24 hours = 15 deg each)
+                // Let's place 12 (Noon) at the top (-90 degrees on canvas) and 0 (Midnight) at the bottom (90 degrees).
+                for (hour in 0..23) {
+                    // hour 12 -> top (-90), hour 13 -> (-90 + 15) etc.
+                    val standardAngle = ((hour - 12) * 15f) - 90f
                     val standardRad = Math.toRadians(standardAngle.toDouble())
                     val standardX = cx + (radius * 0.75f) * kotlin.math.cos(standardRad).toFloat()
                     val standardY = cy + (radius * 0.75f) * kotlin.math.sin(standardRad).toFloat()
@@ -1873,15 +1893,13 @@ fun WatchStudyScreen(
                     val tickInnerY = cy + (radius * 0.9f) * kotlin.math.sin(standardRad).toFloat()
                     drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = 2f)
 
-                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), standardX, standardY + 15f, textPaint)
+                    val paintToUseForStandard = if (hour == currentHour) currentHourTextPaint else textPaint
+                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), standardX, standardY + 10f, paintToUseForStandard)
                 }
 
                 // Draw True Sun Azimuth "Soft" Dial
-                // From 6 AM (Hour Angle = -90) to 6 PM (Hour Angle = +90)
-                // Note: This is an approximation for standard time, assuming 12:00 is solar noon.
-
-                for (hour in 6..18) {
-                    val displayHour = if (hour > 12) hour - 12 else hour
+                // From 0 to 23 hours
+                for (hour in 0..23) {
                     val hourAngle = (hour - 12) * 15.0 // Degrees
 
                     // Spherical trig to find azimuth
@@ -1901,35 +1919,33 @@ fun WatchStudyScreen(
                         trueAzimuth = 360.0 - trueAzimuth
                     }
 
-                    // Map True Azimuth to dial drawing angle (Azimuth 0 is North. On watch, 12 is South typically for the sun in N.H.)
-                    // If we treat 12 as South (Azimuth 180), then 6 AM is East (Az 90), 6 PM is West (Az 270)
-                    // Let's draw it such that Azimuth 180 is at the top (-90 degrees on Canvas).
-                    // Canvas Angle = TrueAzimuth - 180 - 90 = TrueAzimuth - 270
-
+                    // Map True Azimuth to dial drawing angle (Azimuth 0 is North)
                     val sunCanvasAngle = if (isNorthernHemisphere) {
+                        // In NH, Sun is South (180 Az) at noon. Place 180 at top (-90 Canvas).
                         trueAzimuth - 270.0
                     } else {
-                        // In Southern Hemisphere, sun is North at noon. So Azimuth 0 is at the top.
-                        // Canvas Angle = TrueAzimuth - 90
+                        // In SH, Sun is North (0 Az) at noon. Place 0 at top (-90 Canvas).
                         trueAzimuth - 90.0
                     }
 
                     val sunRad = Math.toRadians(sunCanvasAngle)
 
                     // Draw "Soft" Marker
-                    val trueX = cx + (radius * 0.5f) * kotlin.math.cos(sunRad).toFloat()
-                    val trueY = cy + (radius * 0.5f) * kotlin.math.sin(sunRad).toFloat()
+                    val trueX = cx + (radius * 0.45f) * kotlin.math.cos(sunRad).toFloat()
+                    val trueY = cy + (radius * 0.45f) * kotlin.math.sin(sunRad).toFloat()
 
                     // Draw line connecting standard hour to true hour to show the stretch/warp
-                    val standardAngle = (displayHour * 30f) - 90f
+                    val standardAngle = ((hour - 12) * 15f) - 90f
                     val standardRad = Math.toRadians(standardAngle.toDouble())
                     val standardX = cx + (radius * 0.65f) * kotlin.math.cos(standardRad).toFloat()
                     val standardY = cy + (radius * 0.65f) * kotlin.math.sin(standardRad).toFloat()
 
                     val warpColor = if (foregroundColor == Color.White) Color(0x6600FFFF) else Color(0x660000FF)
-                    drawLine(color = warpColor, start = Offset(standardX, standardY), end = Offset(trueX, trueY), strokeWidth = 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                    val activeWarpColor = if (hour == currentHour) Color.Red else warpColor
+                    drawLine(color = activeWarpColor, start = Offset(standardX, standardY), end = Offset(trueX, trueY), strokeWidth = if (hour == currentHour) 4f else 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
 
-                    drawContext.canvas.nativeCanvas.drawText(displayHour.toString(), trueX, trueY + 15f, trueTextPaint)
+                    val paintToUseForTrue = if (hour == currentHour) currentHourTextPaint else trueTextPaint
+                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, paintToUseForTrue)
                 }
 
                 // Draw compass directions
@@ -1958,7 +1974,7 @@ fun WatchStudyScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "The gray outer numbers show a perfect 30° watch dial. The colored inner numbers show where the sun ACTUALLY is at that hour for the selected latitude based on today's declination.",
+            "The gray outer numbers show a perfect 15° watch dial. The colored inner numbers show where the sun ACTUALLY is at that hour for the selected latitude based on today's declination.",
             color = foregroundColor,
             fontSize = 12.sp,
             lineHeight = 16.sp,
