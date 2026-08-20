@@ -1820,22 +1820,16 @@ fun WatchStudyScreen(
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Watch Approximation Study", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
-        Text("Comparing 15° rigid watch dials vs True Sun Azimuth", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
+        Text("Malleable Watch Dial (Rotated to Sun)", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Latitude: ${String.format("%.0f°", selectedParallel)}", color = foregroundColor, modifier = Modifier.width(100.dp))
             Slider(
                 value = selectedParallel,
                 onValueChange = {
-                    // Snap to 1 decimal place or just use the float directly for max smoothness
                     selectedParallel = Math.round(it * 10f) / 10f
                 },
                 valueRange = 0f..90f,
-                // Remove steps to allow continuous float values. If they want 1 degree exactly, steps = 89 is for integers.
-                // The user said: "indeed please allow 1° granularity of the slider."
-                // Wait, if they want 1 degree granularity, `steps = 89` does exactly that. But maybe they want it smoother so they can hit exact angles?
-                // Actually they said "indeed please allow 1° granularity of the slider." Let's keep `steps = 89` but remove the float formatting "%.0f" if it's strictly integer, OR just remove steps and let them slide smoothly.
-                // A 1° granularity slider with 90 steps from 0 to 90 means steps = 89 (in compose: 0, 1...90 has 89 steps strictly inside).
                 steps = 89,
                 modifier = Modifier.weight(1f)
             )
@@ -1877,25 +1871,20 @@ fun WatchStudyScreen(
                     isFakeBoldText = true
                 }
 
-                // Draw the standard uniform watch face (24 hours = 15 deg each)
-                // Let's place 12 (Noon) at the top (-90 degrees on canvas) and 0 (Midnight) at the bottom (90 degrees).
-                for (hour in 0..23) {
-                    // hour 12 -> top (-90), hour 13 -> (-90 + 15) etc.
-                    val standardAngle = ((hour - 12) * 15f) - 90f
-                    val standardRad = Math.toRadians(standardAngle.toDouble())
-                    val standardX = cx + (radius * 0.75f) * kotlin.math.cos(standardRad).toFloat()
-                    val standardY = cy + (radius * 0.75f) * kotlin.math.sin(standardRad).toFloat()
+                // Calculate rotation to place current hour at the top (-90 deg)
+                val latRadCurrent = Math.toRadians(selectedParallel.toDouble() * if (isNorthernHemisphere) 1.0 else -1.0)
+                val decRadCurrent = Math.toRadians(declination)
+                val haRadCurrent = Math.toRadians((currentHour - 12) * 15.0)
 
-                    // Draw tick mark
-                    val tickOuterX = cx + radius * kotlin.math.cos(standardRad).toFloat()
-                    val tickOuterY = cy + radius * kotlin.math.sin(standardRad).toFloat()
-                    val tickInnerX = cx + (radius * 0.9f) * kotlin.math.cos(standardRad).toFloat()
-                    val tickInnerY = cy + (radius * 0.9f) * kotlin.math.sin(standardRad).toFloat()
-                    drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = 2f)
+                val sinAltCurrent = kotlin.math.sin(latRadCurrent) * kotlin.math.sin(decRadCurrent) + kotlin.math.cos(latRadCurrent) * kotlin.math.cos(decRadCurrent) * kotlin.math.cos(haRadCurrent)
+                val altRadCurrent = kotlin.math.asin(sinAltCurrent)
 
-                    val paintToUseForStandard = if (hour == currentHour) currentHourTextPaint else textPaint
-                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), standardX, standardY + 10f, paintToUseForStandard)
-                }
+                val cosAzCurrent = (kotlin.math.sin(decRadCurrent) - kotlin.math.sin(latRadCurrent) * kotlin.math.sin(altRadCurrent)) / (kotlin.math.cos(latRadCurrent) * kotlin.math.cos(altRadCurrent))
+                var currentTrueAzimuth = Math.toDegrees(kotlin.math.acos(cosAzCurrent.coerceIn(-1.0, 1.0)))
+                if (currentHour > 12) currentTrueAzimuth = 360.0 - currentTrueAzimuth
+
+                val currentHourCanvasAngle = if (isNorthernHemisphere) currentTrueAzimuth - 270.0 else currentTrueAzimuth - 90.0
+                val rotationOffset = -90.0 - currentHourCanvasAngle
 
                 // Draw True Sun Azimuth "Soft" Dial
                 // From 0 to 23 hours
@@ -1920,35 +1909,72 @@ fun WatchStudyScreen(
                     }
 
                     // Map True Azimuth to dial drawing angle (Azimuth 0 is North)
-                    val sunCanvasAngle = if (isNorthernHemisphere) {
-                        // In NH, Sun is South (180 Az) at noon. Place 180 at top (-90 Canvas).
+                    val baseCanvasAngle = if (isNorthernHemisphere) {
                         trueAzimuth - 270.0
                     } else {
-                        // In SH, Sun is North (0 Az) at noon. Place 0 at top (-90 Canvas).
                         trueAzimuth - 90.0
                     }
 
-                    val sunRad = Math.toRadians(sunCanvasAngle)
+                    val rotatedCanvasAngle = baseCanvasAngle + rotationOffset
+                    val sunRad = Math.toRadians(rotatedCanvasAngle)
 
                     // Draw "Soft" Marker
-                    val trueX = cx + (radius * 0.45f) * kotlin.math.cos(sunRad).toFloat()
-                    val trueY = cy + (radius * 0.45f) * kotlin.math.sin(sunRad).toFloat()
+                    val trueX = cx + (radius * 0.8f) * kotlin.math.cos(sunRad).toFloat()
+                    val trueY = cy + (radius * 0.8f) * kotlin.math.sin(sunRad).toFloat()
 
-                    // Draw line connecting standard hour to true hour to show the stretch/warp
-                    val standardAngle = ((hour - 12) * 15f) - 90f
-                    val standardRad = Math.toRadians(standardAngle.toDouble())
-                    val standardX = cx + (radius * 0.65f) * kotlin.math.cos(standardRad).toFloat()
-                    val standardY = cy + (radius * 0.65f) * kotlin.math.sin(standardRad).toFloat()
-
-                    val warpColor = if (foregroundColor == Color.White) Color(0x6600FFFF) else Color(0x660000FF)
-                    val activeWarpColor = if (hour == currentHour) Color.Red else warpColor
-                    drawLine(color = activeWarpColor, start = Offset(standardX, standardY), end = Offset(trueX, trueY), strokeWidth = if (hour == currentHour) 4f else 2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                    // Draw tick mark for the hour
+                    val tickOuterX = cx + radius * kotlin.math.cos(sunRad).toFloat()
+                    val tickOuterY = cy + radius * kotlin.math.sin(sunRad).toFloat()
+                    val tickInnerX = cx + (radius * 0.9f) * kotlin.math.cos(sunRad).toFloat()
+                    val tickInnerY = cy + (radius * 0.9f) * kotlin.math.sin(sunRad).toFloat()
+                    drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = if (hour == currentHour) 4f else 2f)
 
                     val paintToUseForTrue = if (hour == currentHour) currentHourTextPaint else trueTextPaint
                     drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, paintToUseForTrue)
                 }
 
-                // Draw compass directions
+                // Draw True North Arrow
+                val northAzimuth = 0.0
+                val northBaseCanvasAngle = if (isNorthernHemisphere) northAzimuth - 270.0 else northAzimuth - 90.0
+                val northRotatedCanvasAngle = northBaseCanvasAngle + rotationOffset
+                val northRad = Math.toRadians(northRotatedCanvasAngle)
+
+                val northPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 40f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    isFakeBoldText = true
+                }
+                // Arrow line
+                val arrowStartX = cx + (radius * 0.2f) * kotlin.math.cos(northRad).toFloat()
+                val arrowStartY = cy + (radius * 0.2f) * kotlin.math.sin(northRad).toFloat()
+                val arrowEndX = cx + (radius * 0.9f) * kotlin.math.cos(northRad).toFloat()
+                val arrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(northRad).toFloat()
+
+                drawLine(
+                    color = Color.White,
+                    start = Offset(arrowStartX, arrowStartY),
+                    end = Offset(arrowEndX, arrowEndY),
+                    strokeWidth = 6f
+                )
+
+                // Arrowhead
+                val headRad1 = northRad + Math.toRadians(150.0)
+                val headRad2 = northRad - Math.toRadians(150.0)
+                val headX1 = arrowEndX + 30f * kotlin.math.cos(headRad1).toFloat()
+                val headY1 = arrowEndY + 30f * kotlin.math.sin(headRad1).toFloat()
+                val headX2 = arrowEndX + 30f * kotlin.math.cos(headRad2).toFloat()
+                val headY2 = arrowEndY + 30f * kotlin.math.sin(headRad2).toFloat()
+
+                drawLine(color = Color.White, start = Offset(arrowEndX, arrowEndY), end = Offset(headX1, headY1), strokeWidth = 6f)
+                drawLine(color = Color.White, start = Offset(arrowEndX, arrowEndY), end = Offset(headX2, headY2), strokeWidth = 6f)
+
+                val northTextX = cx + (radius * 0.6f) * kotlin.math.cos(northRad).toFloat()
+                val northTextY = cy + (radius * 0.6f) * kotlin.math.sin(northRad).toFloat()
+
+                drawContext.canvas.nativeCanvas.drawText("N", northTextX, northTextY + 15f, northPaint)
+
+                // Skip drawing the old S, E, W for now as the user just asked for True North Arrow.
                 val compassPaint = android.graphics.Paint().apply {
                     color = android.graphics.Color.RED
                     textSize = 30f
@@ -1974,7 +2000,7 @@ fun WatchStudyScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "The gray outer numbers show a perfect 15° watch dial. The colored inner numbers show where the sun ACTUALLY is at that hour for the selected latitude based on today's declination.",
+            "Point the current hour (red) towards the Sun. The white arrow shows True North, calculated exactly using today's declination and the selected latitude.",
             color = foregroundColor,
             fontSize = 12.sp,
             lineHeight = 16.sp,
