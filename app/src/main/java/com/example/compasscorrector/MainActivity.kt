@@ -434,6 +434,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
                 if (currentScreen == 4) {
                     WatchStudyScreen(
+                        magneticAzimuth = magneticAzimuth,
+                        location = location,
+                        useTrueNorth = useTrueNorth,
                         foregroundColor = foregroundColor,
                         currentTimeMillis = currentTimeMillis,
                         isNorthernHemisphere = solarIsNorthernHemisphere
@@ -1804,6 +1807,9 @@ Press with the other hand the lock measurement button.""",
 
 @Composable
 fun WatchStudyScreen(
+    magneticAzimuth: Float,
+    location: android.location.Location?,
+    useTrueNorth: Boolean,
     foregroundColor: Color,
     currentTimeMillis: Long,
     isNorthernHemisphere: Boolean
@@ -1933,6 +1939,22 @@ fun WatchStudyScreen(
                     drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, paintToUseForTrue)
                 }
 
+                // Draw Sun Icon at Top (-90 degrees)
+                val sunIconX = cx
+                val sunIconY = cy - radius * 0.9f
+
+                // Sun core
+                drawCircle(color = Color.Yellow, radius = 20f, center = Offset(sunIconX, sunIconY))
+                // Sun rays
+                for (i in 0..7) {
+                    val rayAngle = Math.toRadians((i * 45).toDouble())
+                    val rayStartX = sunIconX + 25f * kotlin.math.cos(rayAngle).toFloat()
+                    val rayStartY = sunIconY + 25f * kotlin.math.sin(rayAngle).toFloat()
+                    val rayEndX = sunIconX + 40f * kotlin.math.cos(rayAngle).toFloat()
+                    val rayEndY = sunIconY + 40f * kotlin.math.sin(rayAngle).toFloat()
+                    drawLine(color = Color.Yellow, start = Offset(rayStartX, rayStartY), end = Offset(rayEndX, rayEndY), strokeWidth = 4f)
+                }
+
                 // Draw True North Arrow
                 val northAzimuth = 0.0
                 val northBaseCanvasAngle = if (isNorthernHemisphere) northAzimuth - 270.0 else northAzimuth - 90.0
@@ -1940,7 +1962,7 @@ fun WatchStudyScreen(
                 val northRad = Math.toRadians(northRotatedCanvasAngle)
 
                 val northPaint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.WHITE
+                    color = android.graphics.Color.YELLOW
                     textSize = 40f
                     textAlign = android.graphics.Paint.Align.CENTER
                     isFakeBoldText = true
@@ -1952,7 +1974,7 @@ fun WatchStudyScreen(
                 val arrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(northRad).toFloat()
 
                 drawLine(
-                    color = Color.White,
+                    color = Color.Yellow,
                     start = Offset(arrowStartX, arrowStartY),
                     end = Offset(arrowEndX, arrowEndY),
                     strokeWidth = 6f
@@ -1966,35 +1988,62 @@ fun WatchStudyScreen(
                 val headX2 = arrowEndX + 30f * kotlin.math.cos(headRad2).toFloat()
                 val headY2 = arrowEndY + 30f * kotlin.math.sin(headRad2).toFloat()
 
-                drawLine(color = Color.White, start = Offset(arrowEndX, arrowEndY), end = Offset(headX1, headY1), strokeWidth = 6f)
-                drawLine(color = Color.White, start = Offset(arrowEndX, arrowEndY), end = Offset(headX2, headY2), strokeWidth = 6f)
+                drawLine(color = Color.Yellow, start = Offset(arrowEndX, arrowEndY), end = Offset(headX1, headY1), strokeWidth = 6f)
+                drawLine(color = Color.Yellow, start = Offset(arrowEndX, arrowEndY), end = Offset(headX2, headY2), strokeWidth = 6f)
 
                 val northTextX = cx + (radius * 0.6f) * kotlin.math.cos(northRad).toFloat()
                 val northTextY = cy + (radius * 0.6f) * kotlin.math.sin(northRad).toFloat()
 
                 drawContext.canvas.nativeCanvas.drawText("N", northTextX, northTextY + 15f, northPaint)
 
-                // Skip drawing the old S, E, W for now as the user just asked for True North Arrow.
-                val compassPaint = android.graphics.Paint().apply {
+                // Draw Device Compass Arrows (North and South)
+                // The top of the phone is pointing at the Sun.
+                // The device's compass reading is magneticAzimuth (or True North if useTrueNorth is checked).
+                val displayAzimuth = if (useTrueNorth && location != null) {
+                    val decl = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
+                    (magneticAzimuth + decl + 360f) % 360f
+                } else {
+                    magneticAzimuth
+                }
+
+                // If top of phone is Sun (-90 deg on canvas), and compass says phone is pointing at `displayAzimuth` degrees,
+                // then North is at -displayAzimuth from the top.
+                val deviceNorthCanvasAngle = -90f - displayAzimuth
+                val deviceNorthRad = Math.toRadians(deviceNorthCanvasAngle.toDouble())
+                val deviceSouthRad = Math.toRadians((deviceNorthCanvasAngle + 180f).toDouble())
+
+                val redPaint = android.graphics.Paint().apply {
                     color = android.graphics.Color.RED
                     textSize = 30f
                     textAlign = android.graphics.Paint.Align.CENTER
+                    isFakeBoldText = true
                 }
-                val southPaint = android.graphics.Paint().apply {
+                val bluePaint = android.graphics.Paint().apply {
                     color = android.graphics.Color.BLUE
                     textSize = 30f
                     textAlign = android.graphics.Paint.Align.CENTER
+                    isFakeBoldText = true
                 }
 
-                if (isNorthernHemisphere) {
-                    drawContext.canvas.nativeCanvas.drawText("S (12)", cx, cy - radius + 40f, compassPaint)
-                    drawContext.canvas.nativeCanvas.drawText("E", cx + radius - 30f, cy + 10f, compassPaint)
-                    drawContext.canvas.nativeCanvas.drawText("W", cx - radius + 30f, cy + 10f, compassPaint)
-                } else {
-                    drawContext.canvas.nativeCanvas.drawText("N (12)", cx, cy - radius + 40f, southPaint)
-                    drawContext.canvas.nativeCanvas.drawText("E", cx + radius - 30f, cy + 10f, southPaint)
-                    drawContext.canvas.nativeCanvas.drawText("W", cx - radius + 30f, cy + 10f, southPaint)
-                }
+                // Draw Device North Arrow
+                val magArrowStartX = cx + (radius * 0.2f) * kotlin.math.cos(deviceNorthRad).toFloat()
+                val magArrowStartY = cy + (radius * 0.2f) * kotlin.math.sin(deviceNorthRad).toFloat()
+                val magArrowEndX = cx + (radius * 0.9f) * kotlin.math.cos(deviceNorthRad).toFloat()
+                val magArrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(deviceNorthRad).toFloat()
+
+                drawLine(color = Color.Red, start = Offset(magArrowStartX, magArrowStartY), end = Offset(magArrowEndX, magArrowEndY), strokeWidth = 4f)
+                drawContext.canvas.nativeCanvas.drawText("N", magArrowEndX + 20f * kotlin.math.cos(deviceNorthRad).toFloat(), magArrowEndY + 20f * kotlin.math.sin(deviceNorthRad).toFloat() + 10f, redPaint)
+
+                // Draw Device South Arrow
+                val southArrowStartX = cx + (radius * 0.2f) * kotlin.math.cos(deviceSouthRad).toFloat()
+                val southArrowStartY = cy + (radius * 0.2f) * kotlin.math.sin(deviceSouthRad).toFloat()
+                val southArrowEndX = cx + (radius * 0.9f) * kotlin.math.cos(deviceSouthRad).toFloat()
+                val southArrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(deviceSouthRad).toFloat()
+
+                drawLine(color = Color.Blue, start = Offset(southArrowStartX, southArrowStartY), end = Offset(southArrowEndX, southArrowEndY), strokeWidth = 4f)
+                drawContext.canvas.nativeCanvas.drawText("S", southArrowEndX + 20f * kotlin.math.cos(deviceSouthRad).toFloat(), southArrowEndY + 20f * kotlin.math.sin(deviceSouthRad).toFloat() + 10f, bluePaint)
+
+
             }
         }
 
