@@ -11,17 +11,34 @@ import android.os.Looper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+data class SatelliteInfo(
+    val svid: Int,
+    val cn0DbHz: Float,
+    val usedInFix: Boolean
+)
+
+data class ConstellationData(
+    val name: String,
+    val flag: String,
+    val inViewCount: Int = 0,
+    val inFixCount: Int = 0,
+    val satellites: List<SatelliteInfo> = emptyList()
+)
+
 data class GnssDiagnosticState(
     val networkLocation: Location? = null,
     val gpsLocation: Location? = null,
-    val totalSatellites: Int = 0,
-    val usedSatellites: Int = 0,
-    val gpsSatellites: Int = 0,
-    val galileoSatellites: Int = 0,
-    val glonassSatellites: Int = 0,
-    val beidouSatellites: Int = 0,
-    val maxCn0DbHz: Float = 0f,
-    val avgCn0DbHz: Float = 0f
+    val totalInView: Int = 0,
+    val totalInFix: Int = 0,
+    val constellations: Map<Int, ConstellationData> = mapOf(
+        GnssStatus.CONSTELLATION_GPS to ConstellationData("GPS", "🇺🇸"),
+        GnssStatus.CONSTELLATION_GALILEO to ConstellationData("Galileo", "🇪🇺"),
+        GnssStatus.CONSTELLATION_GLONASS to ConstellationData("GLONASS", "🇷🇺"),
+        GnssStatus.CONSTELLATION_BEIDOU to ConstellationData("BeiDou", "🇨🇳"),
+        GnssStatus.CONSTELLATION_UNKNOWN to ConstellationData("Other", "❓")
+    ),
+    val avgCn0InFix: Float = 0f,
+    val avgCn0OutFix: Float = 0f
 )
 
 class GnssDiagnosticHelper(private val context: Context) {
@@ -46,38 +63,48 @@ class GnssDiagnosticHelper(private val context: Context) {
 
     private val gnssStatusCallback = object : GnssStatus.Callback() {
         override fun onSatelliteStatusChanged(status: GnssStatus) {
-            var used = 0
-            var gps = 0
-            var galileo = 0
-            var glonass = 0
-            var beidou = 0
-            var totalCn0 = 0f
-            var maxCn0 = 0f
-
             val count = status.satelliteCount
+
+            var totalInView = 0
+            var totalInFix = 0
+            var sumCn0InFix = 0f
+            var sumCn0OutFix = 0f
+
+            val tempMap = mutableMapOf<Int, MutableList<SatelliteInfo>>()
+
             for (i in 0 until count) {
-                if (status.usedInFix(i)) used++
+                val used = status.usedInFix(i)
                 val type = status.getConstellationType(i)
-                when (type) {
-                    GnssStatus.CONSTELLATION_GPS -> gps++
-                    GnssStatus.CONSTELLATION_GALILEO -> galileo++
-                    GnssStatus.CONSTELLATION_GLONASS -> glonass++
-                    GnssStatus.CONSTELLATION_BEIDOU -> beidou++
-                }
                 val cn0 = status.getCn0DbHz(i)
-                totalCn0 += cn0
-                if (cn0 > maxCn0) maxCn0 = cn0
+                val svid = status.getSvid(i)
+
+                totalInView++
+                if (used) {
+                    totalInFix++
+                    sumCn0InFix += cn0
+                } else {
+                    sumCn0OutFix += cn0
+                }
+
+                val key = if (type in listOf(GnssStatus.CONSTELLATION_GPS, GnssStatus.CONSTELLATION_GALILEO, GnssStatus.CONSTELLATION_GLONASS, GnssStatus.CONSTELLATION_BEIDOU)) type else GnssStatus.CONSTELLATION_UNKNOWN
+                tempMap.getOrPut(key) { mutableListOf() }.add(SatelliteInfo(svid, cn0, used))
+            }
+
+            val newConstellations = _state.value.constellations.mapValues { (key, data) ->
+                val sats = tempMap[key] ?: emptyList()
+                data.copy(
+                    inViewCount = sats.size,
+                    inFixCount = sats.count { it.usedInFix },
+                    satellites = sats
+                )
             }
 
             _state.value = _state.value.copy(
-                totalSatellites = count,
-                usedSatellites = used,
-                gpsSatellites = gps,
-                galileoSatellites = galileo,
-                glonassSatellites = glonass,
-                beidouSatellites = beidou,
-                maxCn0DbHz = maxCn0,
-                avgCn0DbHz = if (count > 0) totalCn0 / count else 0f
+                totalInView = totalInView,
+                totalInFix = totalInFix,
+                constellations = newConstellations,
+                avgCn0InFix = if (totalInFix > 0) sumCn0InFix / totalInFix else 0f,
+                avgCn0OutFix = if ((totalInView - totalInFix) > 0) sumCn0OutFix / (totalInView - totalInFix) else 0f
             )
         }
     }
