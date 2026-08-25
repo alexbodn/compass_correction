@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Menu
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.example.compasscorrector.ui.DiagnosticsScreen
+
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
@@ -130,6 +132,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var useCompassForFullLocation by remember { mutableStateOf(false) }
     var livePitch by remember { mutableStateOf(0f) }
     var liveRoll by remember { mutableStateOf(0f) }
+    var magneticAccuracy by remember { mutableStateOf(0) }
+    var magneticFieldStrength by remember { mutableStateOf(0f) }
 
     // Lunar Settings
     var lunarUseGNSS by remember { mutableStateOf(false) }
@@ -145,6 +149,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         sensorHelper.onInclinationChanged = { pitch, roll ->
             livePitch = pitch
             liveRoll = roll
+        }
+        sensorHelper.onMagneticAccuracyChanged = { acc ->
+            magneticAccuracy = acc
+        }
+        sensorHelper.onMagneticFieldStrengthChanged = { strength ->
+            magneticFieldStrength = strength
         }
         onDispose {
             sensorHelper.onAzimuthChanged = null
@@ -394,6 +404,16 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     colors = drawerColors
                 )
                 NavigationDrawerItem(
+                    label = { Text("Diagnostics") },
+                    selected = currentScreen == 5,
+                    onClick = {
+                        currentScreen = 5
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+                NavigationDrawerItem(
                     label = { Text("Settings") },
                     selected = currentScreen == 3,
                     onClick = {
@@ -432,7 +452,15 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                if (currentScreen == 4) {
+                if (currentScreen == 5) {
+                    DiagnosticsScreen(
+                        foregroundColor = foregroundColor,
+                        magneticAzimuth = magneticAzimuth,
+                        magneticAccuracy = magneticAccuracy,
+                        magneticFieldStrength = magneticFieldStrength,
+                        hasLocationPermission = hasLocationPermission
+                    )
+                } else if (currentScreen == 4) {
                     WatchStudyScreen(
                         magneticAzimuth = magneticAzimuth,
                         location = location,
