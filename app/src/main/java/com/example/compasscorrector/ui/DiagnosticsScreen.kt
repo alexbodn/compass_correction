@@ -52,23 +52,23 @@ fun DiagnosticsScreen(
 
     val gpsLoc = gnssState.gpsLocation
     val locAccuracyText = if (gpsLoc != null) {
-        if (gpsLoc.accuracy <= 10f) "High"
-        else if (gpsLoc.accuracy <= 30f) "Medium"
-        else "Low"
+        if (gpsLoc.accuracy <= 10f) "Very accurate"
+        else if (gpsLoc.accuracy <= 30f) "Moderately accurate"
+        else "Low accuracy"
     } else "Unknown"
 
     val locAccuracyColor = when (locAccuracyText) {
-        "High" -> Color.Green
-        "Medium" -> Color.Yellow
-        "Low" -> Color.Red
+        "Very accurate" -> Color.Green
+        "Moderately accurate" -> Color.Yellow
+        "Low accuracy" -> Color.Red
         else -> Color.Gray
     }
 
     val dirAccuracyText = when (magneticAccuracy) {
         android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE -> "Unreliable"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "Medium"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "High"
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low accuracy"
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "Moderately accurate"
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "Very accurate"
         else -> "Unknown"
     }
     val dirAccuracyColor = when (magneticAccuracy) {
@@ -86,11 +86,11 @@ fun DiagnosticsScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "tools to diagnose your phone location and direction capabilities. they are very well designed, but depend on environmental conditions that could be suboptimal or misleading. we'll help you diagnose your conditions and find working alternatives, if needed.",
+            "Tools to diagnose your phone location and direction capabilities.\nThey are very well designed, but depend on environmental conditions that could be suboptimal or misleading.\nWe'll help you diagnose your conditions and find working alternatives, if needed.",
             color = foregroundColor,
             fontSize = 12.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
+            textAlign = TextAlign.Start,
+            modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth()
         )
 
         TabRow(selectedTabIndex = selectedTabIndex, containerColor = Color.Transparent, contentColor = foregroundColor) {
@@ -98,8 +98,8 @@ fun DiagnosticsScreen(
                 selected = selectedTabIndex == 0,
                 onClick = { selectedTabIndex = 0 }
             ) {
-                Column(modifier = Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Location")
+                Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Location", modifier = Modifier.padding(end = 4.dp))
                     Text(locAccuracyText, color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -107,8 +107,8 @@ fun DiagnosticsScreen(
                 selected = selectedTabIndex == 1,
                 onClick = { selectedTabIndex = 1 }
             ) {
-                Column(modifier = Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Direction")
+                Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Direction", modifier = Modifier.padding(end = 4.dp))
                     Text(dirAccuracyText, color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -128,10 +128,18 @@ fun DiagnosticsScreen(
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                         Text("Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                        Text("Lat", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
-                        Text("Lon", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
+                        Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
                     }
                     HorizontalDivider(color = Color.Gray, thickness = 1.dp)
+
+                    val shareCoordinate = { lat: Double, lon: Double ->
+                        val shareIntent = android.content.Intent().apply {
+                            action = android.content.Intent.ACTION_SEND
+                            putExtra(android.content.Intent.EXTRA_TEXT, "$lat, $lon")
+                            type = "text/plain"
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Location"))
+                    }
 
                     val netLoc = gnssState.networkLocation
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -139,8 +147,11 @@ fun DiagnosticsScreen(
                             Text("Network", fontWeight = FontWeight.Bold, color = foregroundColor)
                             if (netLoc != null) Text(" ±${String.format("%.0f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
                         }
-                        Text(if (netLoc != null) String.format("%.4f", netLoc.latitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-                        Text(if (netLoc != null) String.format("%.4f", netLoc.longitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                        if (netLoc != null) {
+                            Text(String.format("%.4f, %.4f", netLoc.latitude, netLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(netLoc.latitude, netLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                        } else {
+                            Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                        }
                     }
 
 
@@ -149,8 +160,11 @@ fun DiagnosticsScreen(
                             Text("GPS", fontWeight = FontWeight.Bold, color = foregroundColor)
                             if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
                         }
-                        Text(if (gpsLoc != null) String.format("%.4f", gpsLoc.latitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-                        Text(if (gpsLoc != null) String.format("%.4f", gpsLoc.longitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                        if (gpsLoc != null) {
+                            Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(gpsLoc.latitude, gpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                        } else {
+                            Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                        }
                     }
 
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -159,21 +173,24 @@ fun DiagnosticsScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("[Measure]", color = Color(0xFF64B5F6), fontSize = 12.sp, modifier = Modifier.clickable { onNavigateToSextant() })
                         }
-                val sextantLat = sextantLockedData?.deducedLatitude
-                val sextantLon = sextantLockedData?.assumedOrDeducedLongitude
-                // Only show if it was actively deduced (both lat and lon exist implies full compass deduction was used)
-                val isFullyDeduced = sextantLat != null && sextantLon != null && sextantLockedData?.lockedShadowAzimuth != null
+                        val sextantLat = sextantLockedData?.deducedLatitude
+                        val sextantLon = sextantLockedData?.assumedOrDeducedLongitude
+                        // Only show if it was actively deduced (both lat and lon exist implies full compass deduction was used)
+                        val isFullyDeduced = sextantLat != null && sextantLon != null && sextantLockedData?.lockedShadowAzimuth != null
 
-                Text(if (isFullyDeduced) String.format("%.4f", sextantLat) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-                Text(if (isFullyDeduced) String.format("%.4f", sextantLon) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-            }
+                        if (isFullyDeduced) {
+                            Text(String.format("%.4f, %.4f", sextantLat!!, sextantLon!!), modifier = Modifier.weight(1f).clickable { shareCoordinate(sextantLat.toDouble(), sextantLon.toDouble()) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                        } else {
+                            Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                        }
+                    }
 
                     HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
-                    var distanceString = "Distance: Waiting for locations..."
+                    var distanceString = "Distance between measured locations: Waiting..."
                     if (netLoc != null && gpsLoc != null) {
                         val dist = netLoc.distanceTo(gpsLoc)
-                        distanceString = "Distance: ${String.format("%.1f", dist)} meters"
+                        distanceString = "Distance between measured locations: ${String.format("%.1f", dist)} meters"
                     }
                     Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = foregroundColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                 }
@@ -199,7 +216,7 @@ fun DiagnosticsScreen(
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Text("${data.flag} ${data.name}", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
                                 val notInFixCount = data.inViewCount - data.inFixCount
-                                Text("${data.inFixCount}", modifier = Modifier.weight(1f), color = Color.Green, textAlign = TextAlign.Center)
+                                Text("${data.inFixCount}", modifier = Modifier.weight(1f), color = if (data.inFixCount > 0) Color.Green else Color.Gray, textAlign = TextAlign.Center)
                                 Text("$notInFixCount", modifier = Modifier.weight(1f), color = Color.Gray, textAlign = TextAlign.Center)
                             }
 
@@ -209,7 +226,7 @@ fun DiagnosticsScreen(
                                     Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                                         Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", modifier = Modifier.weight(1.5f).padding(start = 24.dp), color = if (sat.usedInFix) Color.Green else Color.Gray, fontSize = 12.sp)
                                         Text(if (sat.usedInFix) "✅" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Green)
-                                        Text(if (!sat.usedInFix) "✅" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray)
+                                        Text(if (!sat.usedInFix) "✔️" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray)
                                     }
                                 }
                             }
