@@ -1,5 +1,7 @@
 package com.example.compasscorrector.ui
 
+import com.example.compasscorrector.SextantLockedData
+
 import android.content.Context
 import android.location.Location
 import androidx.compose.foundation.Canvas
@@ -29,7 +31,9 @@ fun DiagnosticsScreen(
     magneticAzimuth: Float,
     magneticAccuracy: Int,
     magneticFieldStrength: Float,
-    hasLocationPermission: Boolean
+    hasLocationPermission: Boolean,
+    sextantLockedData: SextantLockedData?,
+    onNavigateToSextant: () -> Unit
 ) {
     val context = LocalContext.current
     val helper = remember { GnssDiagnosticHelper(context) }
@@ -72,18 +76,39 @@ fun DiagnosticsScreen(
             HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
             val netLoc = gnssState.networkLocation
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Text("Network", modifier = Modifier.weight(1f), color = foregroundColor)
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Network", color = foregroundColor)
+                    if (netLoc != null) Text("±${String.format("%.1f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                }
                 Text(if (netLoc != null) String.format("%.4f", netLoc.latitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
                 Text(if (netLoc != null) String.format("%.4f", netLoc.longitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
             }
 
             val gpsLoc = gnssState.gpsLocation
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Text("GPS", modifier = Modifier.weight(1f), color = foregroundColor)
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("GPS", color = foregroundColor)
+                    if (gpsLoc != null) Text("±${String.format("%.1f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                }
                 Text(if (gpsLoc != null) String.format("%.4f", gpsLoc.latitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
                 Text(if (gpsLoc != null) String.format("%.4f", gpsLoc.longitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
             }
+
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Sextant", color = foregroundColor)
+                    Text("Measure", color = Color(0xFF64B5F6), fontSize = 12.sp, modifier = Modifier.clickable { onNavigateToSextant() })
+                }
+                val sextantLat = sextantLockedData?.deducedLatitude
+                val sextantLon = sextantLockedData?.assumedOrDeducedLongitude
+                // Only show if it was actively deduced (both lat and lon exist implies full compass deduction was used)
+                val isFullyDeduced = sextantLat != null && sextantLon != null && sextantLockedData.lockedShadowAzimuth != null
+
+                Text(if (isFullyDeduced) String.format("%.4f", sextantLat) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                Text(if (isFullyDeduced) String.format("%.4f", sextantLon) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+            }
+
             HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
             var distanceString = "Distance: Waiting for locations..."
@@ -103,8 +128,8 @@ fun DiagnosticsScreen(
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                 Text("Constellation", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                Text("In View", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.Center)
                 Text("In Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.Center)
+                Text("Not in Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.Center)
             }
             HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
@@ -117,22 +142,23 @@ fun DiagnosticsScreen(
                 }.padding(vertical = 8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Text("${data.flag} ${data.name}", modifier = Modifier.weight(1.5f), color = foregroundColor)
-                        Text("${data.inViewCount}", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.Center)
+                        val notInFixCount = data.inViewCount - data.inFixCount
                         Text("${data.inFixCount}", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.Center)
+                        Text("$notInFixCount", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.Center)
                     }
 
                     if (expandedConstellation == constelId) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, start = 16.dp, end = 16.dp)) {
-                            // In Fix Column
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("In Fix (C/N0)", fontWeight = FontWeight.Bold, color = foregroundColor, fontSize = 12.sp)
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                            // Empty space under Constellation name
+                            Spacer(modifier = Modifier.weight(1.5f))
+                            // In Fix Column List
+                            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 data.satellites.filter { it.usedInFix }.forEach { sat ->
                                     Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", color = Color.Green, fontSize = 12.sp)
                                 }
                             }
-                            // In View Column
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Out of Fix (C/N0)", fontWeight = FontWeight.Bold, color = foregroundColor, fontSize = 12.sp)
+                            // Not in Fix Column List
+                            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 data.satellites.filter { !it.usedInFix }.forEach { sat ->
                                     Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", color = Color.Gray, fontSize = 12.sp)
                                 }
@@ -143,25 +169,29 @@ fun DiagnosticsScreen(
             }
 
             HorizontalDivider(color = Color.Gray, thickness = 1.dp)
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                Text("TOTAL", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                Text("${gnssState.totalInView}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.Center)
-                val fixColor = if (gnssState.totalInFix < 4) Color.Red else foregroundColor
-                Text("${gnssState.totalInFix}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = fixColor, textAlign = TextAlign.Center)
+            var showAverages by remember { mutableStateOf(false) }
+            Column(modifier = Modifier.fillMaxWidth().clickable { showAverages = !showAverages }.padding(vertical = 8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Text("TOTAL", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
+                    val fixColor = if (gnssState.totalInFix < 4) Color.Red else foregroundColor
+                    Text("${gnssState.totalInFix}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = fixColor, textAlign = TextAlign.Center)
+                    val totalNotInFix = gnssState.totalInView - gnssState.totalInFix
+                    Text("$totalNotInFix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.Center)
+                }
+                if (showAverages) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                        Text("Average C/N0 (dB-Hz)", modifier = Modifier.weight(1.5f), color = Color.Gray, fontSize = 12.sp)
+                        Text(String.format("%.1f", gnssState.avgCn0InFix), modifier = Modifier.weight(1f), color = Color.Green, fontSize = 12.sp, textAlign = TextAlign.Center)
+                        Text(String.format("%.1f", gnssState.avgCn0OutFix), modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
+                    }
+                    if (gnssState.avgCn0OutFix > gnssState.avgCn0InFix && gnssState.avgCn0OutFix > 0f) {
+                        Text("Warning: Not-in-fix signals are stronger on average. Possible spoofing.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
             }
             if (gnssState.totalInFix < 4 && gnssState.totalInView > 0) {
                 Text("Warning: Very low total satellites in fix. Location unreliable.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
             }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text("Signal Strengths", style = MaterialTheme.typography.titleSmall, color = foregroundColor)
-        Text("Avg C/N0 (In Fix): ${String.format("%.1f", gnssState.avgCn0InFix)} dB-Hz", color = foregroundColor)
-        Text("Avg C/N0 (Out of Fix): ${String.format("%.1f", gnssState.avgCn0OutFix)} dB-Hz", color = foregroundColor)
-
-        if (gnssState.avgCn0OutFix > gnssState.avgCn0InFix && gnssState.avgCn0OutFix > 0f) {
-             Text("Note: Out-of-fix signals are stronger on average.", color = Color.Yellow, fontSize = 12.sp)
         }
 
         Spacer(modifier = Modifier.height(32.dp))

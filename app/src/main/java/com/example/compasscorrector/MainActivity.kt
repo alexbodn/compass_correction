@@ -431,7 +431,18 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             topBar = {
                 @OptIn(ExperimentalMaterial3Api::class)
                 TopAppBar(
-                    title = { Text("Compass Corrector", fontWeight = FontWeight.Bold) },
+                    title = {
+                        val titleText = when (currentScreen) {
+                            0 -> "Solar Corrector"
+                            1 -> "Lunar Corrector"
+                            2 -> "Sextant Tool"
+                            3 -> "Settings"
+                            4 -> "Watch Study"
+                            5 -> "Diagnostics"
+                            else -> "Compass Corrector"
+                        }
+                        Text(titleText, fontWeight = FontWeight.Bold)
+                    },
                     navigationIcon = {
                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
                             Icon(Icons.Filled.Menu, contentDescription = "Menu")
@@ -458,7 +469,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         magneticAzimuth = magneticAzimuth,
                         magneticAccuracy = magneticAccuracy,
                         magneticFieldStrength = magneticFieldStrength,
-                        hasLocationPermission = hasLocationPermission
+                        hasLocationPermission = hasLocationPermission,
+                        sextantLockedData = sextantLockedData,
+                        onNavigateToSextant = {
+                            currentScreen = 2
+                            selectedTabIndex = 2
+                        }
                     )
                 } else if (currentScreen == 4) {
                     WatchStudyScreen(
