@@ -364,6 +364,16 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     unselectedIconColor = foregroundColor
                 )
                 NavigationDrawerItem(
+                    label = { Text("Diagnostics") },
+                    selected = currentScreen == 5,
+                    onClick = {
+                        currentScreen = 5
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
+                NavigationDrawerItem(
                     label = { Text("Solar") },
                     selected = currentScreen == 0,
                     onClick = {
@@ -398,16 +408,6 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     selected = currentScreen == 4,
                     onClick = {
                         currentScreen = 4
-                        coroutineScope.launch { drawerState.close() }
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                    colors = drawerColors
-                )
-                NavigationDrawerItem(
-                    label = { Text("Diagnostics") },
-                    selected = currentScreen == 5,
-                    onClick = {
-                        currentScreen = 5
                         coroutineScope.launch { drawerState.close() }
                     },
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),

@@ -99,7 +99,7 @@ fun DiagnosticsScreen(
                 onClick = { selectedTabIndex = 0 }
             ) {
                 Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Location", modifier = Modifier.padding(end = 4.dp))
+                    Text("Location", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
                     Text(locAccuracyText, color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -108,7 +108,7 @@ fun DiagnosticsScreen(
                 onClick = { selectedTabIndex = 1 }
             ) {
                 Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Direction", modifier = Modifier.padding(end = 4.dp))
+                    Text("Direction", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
                     Text(dirAccuracyText, color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -127,18 +127,26 @@ fun DiagnosticsScreen(
                 // Location Table
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                     Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                        Text("Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
+                        Text("Location Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
                         Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
                     }
                     HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
                     val shareCoordinate = { lat: Double, lon: Double ->
-                        val shareIntent = android.content.Intent().apply {
-                            action = android.content.Intent.ACTION_SEND
-                            putExtra(android.content.Intent.EXTRA_TEXT, "$lat, $lon")
-                            type = "text/plain"
+                        val geoUri = android.net.Uri.parse("geo:$lat,$lon?q=$lat,$lon")
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
+
+                        // Fallback to generic text sharing if no map app is installed
+                        if (shareIntent.resolveActivity(context.packageManager) != null) {
+                            context.startActivity(shareIntent)
+                        } else {
+                            val fallbackIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_TEXT, "$lat, $lon")
+                                type = "text/plain"
+                            }
+                            context.startActivity(android.content.Intent.createChooser(fallbackIntent, "Share Location"))
                         }
-                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Location"))
                     }
 
                     val netLoc = gnssState.networkLocation
@@ -187,10 +195,10 @@ fun DiagnosticsScreen(
 
                     HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
-                    var distanceString = "Distance between measured locations: Waiting..."
+                    var distanceString = "Waiting for measured locations..."
                     if (netLoc != null && gpsLoc != null) {
                         val dist = netLoc.distanceTo(gpsLoc)
-                        distanceString = "Distance between measured locations: ${String.format("%.1f", dist)} meters"
+                        distanceString = "${String.format("%.1f", dist)} meters distance between measured locations"
                     }
                     Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = foregroundColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                 }
@@ -271,9 +279,9 @@ fun DiagnosticsScreen(
                         val sendIntent = android.content.Intent().apply {
                             action = android.content.Intent.ACTION_SEND
                             putExtra(android.content.Intent.EXTRA_TEXT, tsvBuilder.toString())
-                            type = "text/plain"
+                            type = "text/tab-separated-values"
                         }
-                        val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Share TSV Data")
                         context.startActivity(shareIntent)
                     }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                         Text("Share Data (TSV)")
