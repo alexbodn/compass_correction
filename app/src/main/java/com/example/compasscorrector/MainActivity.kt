@@ -197,7 +197,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     // Calculations
     var initialTabCalculated by remember { mutableStateOf(false) }
-    var selectedTabIndex by remember { mutableStateOf(0) }
+    var selectedTabIndex by remember { mutableStateOf(5) }
 
     val useTrueNorth = globalUseTrueNorth
     val compassAzimuth: Float

@@ -77,9 +77,9 @@ fun DiagnosticsScreen(
 
             val netLoc = gnssState.networkLocation
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text("Network", color = foregroundColor)
-                    if (netLoc != null) Text("±${String.format("%.1f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                    if (netLoc != null) Text(" ±${String.format("%.0f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
                 }
                 Text(if (netLoc != null) String.format("%.4f", netLoc.latitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
                 Text(if (netLoc != null) String.format("%.4f", netLoc.longitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
@@ -87,18 +87,19 @@ fun DiagnosticsScreen(
 
             val gpsLoc = gnssState.gpsLocation
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text("GPS", color = foregroundColor)
-                    if (gpsLoc != null) Text("±${String.format("%.1f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                    if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
                 }
                 Text(if (gpsLoc != null) String.format("%.4f", gpsLoc.latitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
                 Text(if (gpsLoc != null) String.format("%.4f", gpsLoc.longitude) else "-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
             }
 
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text("Sextant", color = foregroundColor)
-                    Text("Measure", color = Color(0xFF64B5F6), fontSize = 12.sp, modifier = Modifier.clickable { onNavigateToSextant() })
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("[Measure]", color = Color(0xFF64B5F6), fontSize = 12.sp, modifier = Modifier.clickable { onNavigateToSextant() })
                 }
                 val sextantLat = sextantLockedData?.deducedLatitude
                 val sextantLon = sextantLockedData?.assumedOrDeducedLongitude
@@ -148,20 +149,12 @@ fun DiagnosticsScreen(
                     }
 
                     if (expandedConstellation == constelId) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                            // Empty space under Constellation name
-                            Spacer(modifier = Modifier.weight(1.5f))
-                            // In Fix Column List
-                            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                data.satellites.filter { it.usedInFix }.forEach { sat ->
-                                    Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", color = Color.Green, fontSize = 12.sp)
-                                }
-                            }
-                            // Not in Fix Column List
-                            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                data.satellites.filter { !it.usedInFix }.forEach { sat ->
-                                    Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", color = Color.Gray, fontSize = 12.sp)
-                                }
+                        val sortedSats = data.satellites.sortedByDescending { it.cn0DbHz }
+                        sortedSats.forEach { sat ->
+                            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                                Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", modifier = Modifier.weight(1.5f).padding(start = 24.dp), color = if (sat.usedInFix) Color.Green else Color.Gray, fontSize = 12.sp)
+                                Text(if (sat.usedInFix) "✅" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp)
+                                Text(if (!sat.usedInFix) "✅" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp)
                             }
                         }
                     }
@@ -191,6 +184,27 @@ fun DiagnosticsScreen(
             }
             if (gnssState.totalInFix < 4 && gnssState.totalInView > 0) {
                 Text("Warning: Very low total satellites in fix. Location unreliable.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = {
+                val tsvBuilder = StringBuilder()
+                tsvBuilder.append("Constellation\tSVID\tC/N0(dB-Hz)\tIn_Fix\n")
+                gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
+                    data.satellites.sortedByDescending { it.cn0DbHz }.forEach { sat ->
+                        tsvBuilder.append("${data.name}\t${sat.svid}\t${String.format("%.1f", sat.cn0DbHz)}\t${sat.usedInFix}\n")
+                    }
+                }
+
+                val sendIntent = android.content.Intent().apply {
+                    action = android.content.Intent.ACTION_SEND
+                    putExtra(android.content.Intent.EXTRA_TEXT, tsvBuilder.toString())
+                    type = "text/plain"
+                }
+                val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                context.startActivity(shareIntent)
+            }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text("Share Data (TSV)")
             }
         }
 

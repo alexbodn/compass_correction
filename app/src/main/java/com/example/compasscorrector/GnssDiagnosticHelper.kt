@@ -35,6 +35,9 @@ data class GnssDiagnosticState(
         GnssStatus.CONSTELLATION_GALILEO to ConstellationData("Galileo", "🇪🇺"),
         GnssStatus.CONSTELLATION_GLONASS to ConstellationData("GLONASS", "🇷🇺"),
         GnssStatus.CONSTELLATION_BEIDOU to ConstellationData("BeiDou", "🇨🇳"),
+        GnssStatus.CONSTELLATION_QZSS to ConstellationData("QZSS", "🇯🇵"),
+        GnssStatus.CONSTELLATION_IRNSS to ConstellationData("IRNSS", "🇮🇳"),
+        GnssStatus.CONSTELLATION_SBAS to ConstellationData("SBAS", "🛰️"),
         GnssStatus.CONSTELLATION_UNKNOWN to ConstellationData("Other", "❓")
     ),
     val avgCn0InFix: Float = 0f,
@@ -86,7 +89,15 @@ class GnssDiagnosticHelper(private val context: Context) {
                     sumCn0OutFix += cn0
                 }
 
-                val key = if (type in listOf(GnssStatus.CONSTELLATION_GPS, GnssStatus.CONSTELLATION_GALILEO, GnssStatus.CONSTELLATION_GLONASS, GnssStatus.CONSTELLATION_BEIDOU)) type else GnssStatus.CONSTELLATION_UNKNOWN
+                val key = if (type in listOf(
+                    GnssStatus.CONSTELLATION_GPS,
+                    GnssStatus.CONSTELLATION_GALILEO,
+                    GnssStatus.CONSTELLATION_GLONASS,
+                    GnssStatus.CONSTELLATION_BEIDOU,
+                    GnssStatus.CONSTELLATION_QZSS,
+                    GnssStatus.CONSTELLATION_IRNSS,
+                    GnssStatus.CONSTELLATION_SBAS
+                )) type else GnssStatus.CONSTELLATION_UNKNOWN
                 tempMap.getOrPut(key) { mutableListOf() }.add(SatelliteInfo(svid, cn0, used))
             }
 
