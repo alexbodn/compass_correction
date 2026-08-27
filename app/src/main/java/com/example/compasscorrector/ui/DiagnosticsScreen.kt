@@ -51,26 +51,12 @@ fun DiagnosticsScreen(
     var selectedTabIndex by remember { mutableStateOf(0) }
 
     val gpsLoc = gnssState.gpsLocation
-    val locAccuracyText = if (gpsLoc != null) {
-        if (gpsLoc.accuracy <= 10f) "Very accurate"
-        else if (gpsLoc.accuracy <= 30f) "Moderately accurate"
-        else "Low accuracy"
-    } else "Unknown"
+    val locAccuracyColor = if (gpsLoc != null) {
+        if (gpsLoc.accuracy <= 10f) Color.Green
+        else if (gpsLoc.accuracy <= 30f) Color.Yellow
+        else Color.Red
+    } else Color.Gray
 
-    val locAccuracyColor = when (locAccuracyText) {
-        "Very accurate" -> Color.Green
-        "Moderately accurate" -> Color.Yellow
-        "Low accuracy" -> Color.Red
-        else -> Color.Gray
-    }
-
-    val dirAccuracyText = when (magneticAccuracy) {
-        android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE -> "Unreliable"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low accuracy"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "Moderately accurate"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "Very accurate"
-        else -> "Unknown"
-    }
     val dirAccuracyColor = when (magneticAccuracy) {
         android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE,
         android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> Color.Red
@@ -100,7 +86,7 @@ fun DiagnosticsScreen(
             ) {
                 Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Location", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
-                    Text(locAccuracyText, color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("🎯 Accuracy", color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Tab(
@@ -109,7 +95,7 @@ fun DiagnosticsScreen(
             ) {
                 Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Direction", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
-                    Text(dirAccuracyText, color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("🎯 Accuracy", color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -165,7 +151,7 @@ fun DiagnosticsScreen(
 
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Text("GPS", fontWeight = FontWeight.Bold, color = foregroundColor)
+                            Text("GNSS", fontWeight = FontWeight.Bold, color = foregroundColor)
                             if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
                         }
                         if (gpsLoc != null) {
@@ -196,11 +182,13 @@ fun DiagnosticsScreen(
                     HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
                     var distanceString = "Waiting for measured locations..."
+                    var distanceColor = foregroundColor
                     if (netLoc != null && gpsLoc != null) {
                         val dist = netLoc.distanceTo(gpsLoc)
-                        distanceString = "${String.format("%.1f", dist)} meters distance between measured locations"
+                        distanceString = "${String.format("%.1f", dist)}m between measured locations"
+                        distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
                     }
-                    Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = foregroundColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+                    Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = distanceColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -268,23 +256,37 @@ fun DiagnosticsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = {
-                        val tsvBuilder = StringBuilder()
-                        tsvBuilder.append("Constellation\tSVID\tC/N0(dB-Hz)\tIn_Fix\n")
+                        val csvBuilder = StringBuilder()
+                        csvBuilder.append("Constellation,SVID,C/N0(dB-Hz),In_Fix\n")
                         gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
                             data.satellites.sortedByDescending { it.cn0DbHz }.forEach { sat ->
-                                tsvBuilder.append("${data.name}\t${sat.svid}\t${String.format("%.1f", sat.cn0DbHz)}\t${sat.usedInFix}\n")
+                                csvBuilder.append("${data.name},${sat.svid},${String.format("%.1f", sat.cn0DbHz)},${sat.usedInFix}\n")
                             }
                         }
 
-                        val sendIntent = android.content.Intent().apply {
-                            action = android.content.Intent.ACTION_SEND
-                            putExtra(android.content.Intent.EXTRA_TEXT, tsvBuilder.toString())
-                            type = "text/tab-separated-values"
+                        try {
+                            val cachePath = java.io.File(context.cacheDir, "gnss_diagnostics.csv")
+                            cachePath.writeText(csvBuilder.toString())
+
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                cachePath
+                            )
+
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                type = "text/csv"
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Share CSV Data")
+                            context.startActivity(shareIntent)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
-                        val shareIntent = android.content.Intent.createChooser(sendIntent, "Share TSV Data")
-                        context.startActivity(shareIntent)
                     }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text("Share Data (TSV)")
+                        Text("Share Data (CSV)")
                     }
                 }
             } else {

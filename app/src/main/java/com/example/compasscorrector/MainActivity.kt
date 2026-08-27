@@ -256,11 +256,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
 
     // Set default tab on startup
     if (!initialTabCalculated) {
-        if (isSunBelowHorizon && !isMoonBelowHorizon) {
-            selectedTabIndex = 1 // Moon is up, sun is down -> default to Lunar
-        } else {
-            selectedTabIndex = 0 // Default to Solar if both up, both down, or only Sun is up
-        }
+        // We explicitly want to launch into the Diagnostics page (5)
+        selectedTabIndex = 5
         initialTabCalculated = true
     }
 
