@@ -14,7 +14,12 @@ import kotlinx.coroutines.flow.StateFlow
 data class SatelliteInfo(
     val svid: Int,
     val cn0DbHz: Float,
-    val usedInFix: Boolean
+    val usedInFix: Boolean,
+    val azimuthDegrees: Float,
+    val elevationDegrees: Float,
+    val hasAlmanac: Boolean,
+    val hasEphemeris: Boolean,
+    val carrierFrequencyHz: Float
 )
 
 data class ConstellationData(
@@ -80,6 +85,13 @@ class GnssDiagnosticHelper(private val context: Context) {
                 val type = status.getConstellationType(i)
                 val cn0 = status.getCn0DbHz(i)
                 val svid = status.getSvid(i)
+                val azimuth = status.getAzimuthDegrees(i)
+                val elevation = status.getElevationDegrees(i)
+                val hasAlmanac = status.hasAlmanacData(i)
+                val hasEphemeris = status.hasEphemerisData(i)
+                val carrierFreq = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && status.hasCarrierFrequencyHz(i)) {
+                    status.getCarrierFrequencyHz(i)
+                } else 0f
 
                 totalInView++
                 if (used) {
@@ -98,7 +110,9 @@ class GnssDiagnosticHelper(private val context: Context) {
                     GnssStatus.CONSTELLATION_IRNSS,
                     GnssStatus.CONSTELLATION_SBAS
                 )) type else GnssStatus.CONSTELLATION_UNKNOWN
-                tempMap.getOrPut(key) { mutableListOf() }.add(SatelliteInfo(svid, cn0, used))
+
+                tempMap.getOrPut(key) { mutableListOf() }
+                    .add(SatelliteInfo(svid, cn0, used, azimuth, elevation, hasAlmanac, hasEphemeris, carrierFreq))
             }
 
             val newConstellations = _state.value.constellations.mapValues { (key, data) ->

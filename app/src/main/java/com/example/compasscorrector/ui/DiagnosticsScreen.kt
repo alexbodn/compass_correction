@@ -24,6 +24,64 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.compasscorrector.GnssDiagnosticHelper
 import com.example.compasscorrector.GnssDiagnosticState
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import kotlin.math.cos
+import kotlin.math.sin
+
+@Composable
+fun AccuracyGauge(score: Float, modifier: Modifier = Modifier) {
+    // Score is 0.0 (Worst/Red) to 1.0 (Best/Green)
+    Canvas(modifier = modifier) {
+        val sweepAngle = 180f
+        val startAngle = 180f
+        val strokeWidth = 8f
+
+        // Draw Red segment
+        drawArc(
+            color = Color.Red,
+            startAngle = 180f,
+            sweepAngle = 60f,
+            useCenter = false,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        // Draw Yellow segment
+        drawArc(
+            color = Color.Yellow,
+            startAngle = 240f,
+            sweepAngle = 60f,
+            useCenter = false,
+            style = Stroke(width = strokeWidth)
+        )
+        // Draw Green segment
+        drawArc(
+            color = Color.Green,
+            startAngle = 300f,
+            sweepAngle = 60f,
+            useCenter = false,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+
+        // Draw Needle
+        val clampedScore = score.coerceIn(0f, 1f)
+        val needleAngleRad = Math.toRadians(180.0 + (clampedScore * 180.0))
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = size.width / 2f
+
+        val endX = cx + (r * 0.8f) * cos(needleAngleRad).toFloat()
+        val endY = cy + (r * 0.8f) * sin(needleAngleRad).toFloat()
+
+        drawLine(
+            color = Color.White,
+            start = Offset(cx, cy),
+            end = Offset(endX, endY),
+            strokeWidth = 3f,
+            cap = StrokeCap.Round
+        )
+        drawCircle(color = Color.White, radius = 4f, center = Offset(cx, cy))
+    }
+}
 
 @Composable
 fun DiagnosticsScreen(
@@ -51,11 +109,39 @@ fun DiagnosticsScreen(
     var selectedTabIndex by remember { mutableStateOf(0) }
 
     val gpsLoc = gnssState.gpsLocation
+
+    // Normalize Location Accuracy (0.0 to 1.0)
+    // 0m = 1.0 (Green), 30m = 0.5 (Yellow), >=60m = 0.0 (Red)
+    val locScore = if (gpsLoc != null) {
+        val acc = gpsLoc.accuracy
+        (1f - (acc / 60f)).coerceIn(0f, 1f)
+    } else 0f
+
+    val locAccuracyText = if (gpsLoc != null) {
+        if (gpsLoc.accuracy <= 10f) "High (${String.format("%.0f", gpsLoc.accuracy)}m)"
+        else if (gpsLoc.accuracy <= 30f) "Mid (${String.format("%.0f", gpsLoc.accuracy)}m)"
+        else "Low (${String.format("%.0f", gpsLoc.accuracy)}m)"
+    } else "Unknown"
+
     val locAccuracyColor = if (gpsLoc != null) {
         if (gpsLoc.accuracy <= 10f) Color.Green
         else if (gpsLoc.accuracy <= 30f) Color.Yellow
         else Color.Red
     } else Color.Gray
+
+    val dirScore = when (magneticAccuracy) {
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> 0.9f
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> 0.5f
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> 0.1f
+        else -> 0f
+    }
+
+    val dirAccuracyText = when (magneticAccuracy) {
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "High"
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "Mid"
+        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low"
+        else -> "Unreliable"
+    }
 
     val dirAccuracyColor = when (magneticAccuracy) {
         android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE,
@@ -72,7 +158,7 @@ fun DiagnosticsScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            "Tools to diagnose your phone location and direction capabilities.\nThey are very well designed, but depend on environmental conditions that could be suboptimal or misleading.\nWe'll help you diagnose your conditions and find working alternatives, if needed.",
+            "Tools to diagnose your phone location and direction reliability.\nThe capabilities are very well designed, but measurements depend on environmental conditions that could be suboptimal or misleading.\nWe'll help you diagnose your conditions and find working alternatives, if needed.",
             color = foregroundColor,
             fontSize = 12.sp,
             textAlign = TextAlign.Start,
@@ -84,18 +170,26 @@ fun DiagnosticsScreen(
                 selected = selectedTabIndex == 0,
                 onClick = { selectedTabIndex = 0 }
             ) {
-                Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Location", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
-                    Text("🎯 Accuracy", color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Location", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AccuracyGauge(score = locScore, modifier = Modifier.size(20.dp, 10.dp).padding(end = 4.dp))
+                        Text(locAccuracyText, color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             Tab(
                 selected = selectedTabIndex == 1,
                 onClick = { selectedTabIndex = 1 }
             ) {
-                Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Direction", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
-                    Text("🎯 Accuracy", color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Direction", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AccuracyGauge(score = dirScore, modifier = Modifier.size(20.dp, 10.dp).padding(end = 4.dp))
+                        Text(dirAccuracyText, color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -257,10 +351,10 @@ fun DiagnosticsScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = {
                         val csvBuilder = StringBuilder()
-                        csvBuilder.append("Constellation,SVID,C/N0(dB-Hz),In_Fix\n")
+                        csvBuilder.append("Constellation,SVID,C/N0(dB-Hz),In_Fix,Azimuth(deg),Elevation(deg),Has_Almanac,Has_Ephemeris,Carrier_Freq(Hz)\n")
                         gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
                             data.satellites.sortedByDescending { it.cn0DbHz }.forEach { sat ->
-                                csvBuilder.append("${data.name},${sat.svid},${String.format("%.1f", sat.cn0DbHz)},${sat.usedInFix}\n")
+                                csvBuilder.append("${data.name},${sat.svid},${String.format("%.1f", sat.cn0DbHz)},${sat.usedInFix},${String.format("%.1f", sat.azimuthDegrees)},${String.format("%.1f", sat.elevationDegrees)},${sat.hasAlmanac},${sat.hasEphemeris},${sat.carrierFrequencyHz}\n")
                             }
                         }
 
@@ -274,19 +368,27 @@ fun DiagnosticsScreen(
                                 cachePath
                             )
 
-                            val sendIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                type = "text/csv"
+                            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "text/csv")
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            val shareIntent = android.content.Intent.createChooser(sendIntent, "Share CSV Data")
-                            context.startActivity(shareIntent)
+
+                            if (viewIntent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(viewIntent)
+                            } else {
+                                // Fallback to send/share if no viewer is installed
+                                val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    type = "text/csv"
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Satellite Data"))
+                            }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text("Share Data (CSV)")
+                        Text("Share Satellite Data")
                     }
                 }
             } else {
