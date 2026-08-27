@@ -26,6 +26,8 @@ import com.example.compasscorrector.GnssDiagnosticHelper
 import com.example.compasscorrector.GnssDiagnosticState
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -97,6 +99,21 @@ fun DiagnosticsScreen(
     val helper = remember { GnssDiagnosticHelper(context) }
     val gnssState by helper.state.collectAsState()
 
+    var csvContentToSave by remember { mutableStateOf("") }
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(csvContentToSave.toByteArray())
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     DisposableEffect(hasLocationPermission) {
         if (hasLocationPermission) {
             helper.startDiagnostics()
@@ -118,10 +135,8 @@ fun DiagnosticsScreen(
     } else 0f
 
     val locAccuracyText = if (gpsLoc != null) {
-        if (gpsLoc.accuracy <= 10f) "High (${String.format("%.0f", gpsLoc.accuracy)}m)"
-        else if (gpsLoc.accuracy <= 30f) "Mid (${String.format("%.0f", gpsLoc.accuracy)}m)"
-        else "Low (${String.format("%.0f", gpsLoc.accuracy)}m)"
-    } else "Unknown"
+        "Accuracy (${String.format("%.0f", gpsLoc.accuracy)}m)"
+    } else "Accuracy"
 
     val locAccuracyColor = if (gpsLoc != null) {
         if (gpsLoc.accuracy <= 10f) Color.Green
@@ -136,12 +151,7 @@ fun DiagnosticsScreen(
         else -> 0f
     }
 
-    val dirAccuracyText = when (magneticAccuracy) {
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_HIGH -> "High"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_MEDIUM -> "Mid"
-        android.hardware.SensorManager.SENSOR_STATUS_ACCURACY_LOW -> "Low"
-        else -> "Unreliable"
-    }
+    val dirAccuracyText = "Accuracy"
 
     val dirAccuracyColor = when (magneticAccuracy) {
         android.hardware.SensorManager.SENSOR_STATUS_UNRELIABLE,
@@ -170,26 +180,20 @@ fun DiagnosticsScreen(
                 selected = selectedTabIndex == 0,
                 onClick = { selectedTabIndex = 0 }
             ) {
-                Column(modifier = Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Location", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AccuracyGauge(score = locScore, modifier = Modifier.size(20.dp, 10.dp).padding(end = 4.dp))
-                        Text(locAccuracyText, color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
+                Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Location", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
+                    AccuracyGauge(score = locScore, modifier = Modifier.size(20.dp, 10.dp).padding(end = 4.dp))
+                    Text(locAccuracyText, color = locAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Tab(
                 selected = selectedTabIndex == 1,
                 onClick = { selectedTabIndex = 1 }
             ) {
-                Column(modifier = Modifier.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Direction", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AccuracyGauge(score = dirScore, modifier = Modifier.size(20.dp, 10.dp).padding(end = 4.dp))
-                        Text(dirAccuracyText, color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
+                Row(modifier = Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Direction", fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
+                    AccuracyGauge(score = dirScore, modifier = Modifier.size(20.dp, 10.dp).padding(end = 4.dp))
+                    Text(dirAccuracyText, color = dirAccuracyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -357,38 +361,10 @@ fun DiagnosticsScreen(
                                 csvBuilder.append("${data.name},${sat.svid},${String.format("%.1f", sat.cn0DbHz)},${sat.usedInFix},${String.format("%.1f", sat.azimuthDegrees)},${String.format("%.1f", sat.elevationDegrees)},${sat.hasAlmanac},${sat.hasEphemeris},${sat.carrierFrequencyHz}\n")
                             }
                         }
-
-                        try {
-                            val cachePath = java.io.File(context.cacheDir, "gnss_diagnostics.csv")
-                            cachePath.writeText(csvBuilder.toString())
-
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                cachePath
-                            )
-
-                            val viewIntent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, "text/csv")
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-
-                            if (viewIntent.resolveActivity(context.packageManager) != null) {
-                                context.startActivity(viewIntent)
-                            } else {
-                                // Fallback to send/share if no viewer is installed
-                                val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                    type = "text/csv"
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(android.content.Intent.createChooser(sendIntent, "Share Satellite Data"))
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                        csvContentToSave = csvBuilder.toString()
+                        createDocumentLauncher.launch("gnss_diagnostics.csv")
                     }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text("Share Satellite Data")
+                        Text("Download Satellite Data (CSV)")
                     }
                 }
             } else {
