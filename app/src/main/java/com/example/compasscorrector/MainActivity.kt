@@ -118,9 +118,10 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var magneticAzimuth by remember { mutableStateOf(0f) }
     var rawLocation by remember { mutableStateOf<android.location.Location?>(null) }
 
-    // Validated Location: If we have < 4 satellites in fix, the FusedLocationProvider
-    // is likely faking a GPS signal via Network triangulation, so we nullify it.
-    val location = if (gnssState.totalInFix >= 4) rawLocation else null
+    // Prioritize GNSS Fused Location if we have a hardware fix. If GNSS is failing or spoofed (< 4 satellites),
+    // explicitly fall back to the pure Network provider (Wi-Fi/Cell) if available. It is significantly better
+    // for SPA calculations than relying on a Timezone-only fallback.
+    val location = if (gnssState.totalInFix >= 4) rawLocation else (gnssState.networkLocation ?: rawLocation)
 
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
 
