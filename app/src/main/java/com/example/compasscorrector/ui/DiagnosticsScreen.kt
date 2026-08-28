@@ -200,174 +200,195 @@ fun DiagnosticsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Column(modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-
-            if (selectedTabIndex == 0) {
-                if (!hasLocationPermission) {
-                    Text("Location Permission Required for GNSS Diagnostics.", color = Color.Red, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
+        if (selectedTabIndex == 0) {
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                item {
+                    if (!hasLocationPermission) {
+                        Text("Location Permission Required for GNSS Diagnostics.", color = Color.Red, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                 }
 
-                // Location Table
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                        Text("Location Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                        Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
+                @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+                stickyHeader {
+                    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text("Location Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
+                            Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
+                        }
+                        HorizontalDivider(color = Color.Gray, thickness = 1.dp, modifier = Modifier.padding(top = 4.dp))
                     }
-                    HorizontalDivider(color = Color.Gray, thickness = 1.dp)
+                }
 
-                    val shareCoordinate = { lat: Double, lon: Double ->
-                        val geoUri = android.net.Uri.parse("geo:$lat,$lon?q=$lat,$lon")
-                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
+                item {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                        val shareCoordinate = { lat: Double, lon: Double ->
+                            val geoUri = android.net.Uri.parse("geo:$lat,$lon?q=$lat,$lon")
+                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
 
-                        // Fallback to generic text sharing if no map app is installed
-                        if (shareIntent.resolveActivity(context.packageManager) != null) {
-                            context.startActivity(shareIntent)
-                        } else {
-                            val fallbackIntent = android.content.Intent().apply {
-                                action = android.content.Intent.ACTION_SEND
-                                putExtra(android.content.Intent.EXTRA_TEXT, "$lat, $lon")
-                                type = "text/plain"
+                            // Fallback to generic text sharing if no map app is installed
+                            if (shareIntent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(shareIntent)
+                            } else {
+                                val fallbackIntent = android.content.Intent().apply {
+                                    action = android.content.Intent.ACTION_SEND
+                                    putExtra(android.content.Intent.EXTRA_TEXT, "$lat, $lon")
+                                    type = "text/plain"
+                                }
+                                context.startActivity(android.content.Intent.createChooser(fallbackIntent, "Share Location"))
                             }
-                            context.startActivity(android.content.Intent.createChooser(fallbackIntent, "Share Location"))
                         }
+
+                        val netLoc = gnssState.networkLocation
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Network", fontWeight = FontWeight.Bold, color = foregroundColor)
+                                if (netLoc != null) Text(" ±${String.format("%.0f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                            }
+                            if (netLoc != null) {
+                                Text(String.format("%.4f, %.4f", netLoc.latitude, netLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(netLoc.latitude, netLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                            } else {
+                                Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                            }
+                        }
+
+
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Text("GNSS", fontWeight = FontWeight.Bold, color = foregroundColor)
+                                if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                            }
+                            if (gpsLoc != null) {
+                                Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(gpsLoc.latitude, gpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                            } else {
+                                Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                            }
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Sextant", fontWeight = FontWeight.Bold, color = foregroundColor)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("[Measure]", color = Color(0xFF64B5F6), fontSize = 12.sp, modifier = Modifier.clickable { onNavigateToSextant() })
+                            }
+                            val sextantLat = sextantLockedData?.deducedLatitude
+                            val sextantLon = sextantLockedData?.assumedOrDeducedLongitude
+                            // Only show if it was actively deduced (both lat and lon exist implies full compass deduction was used)
+                            val isFullyDeduced = sextantLat != null && sextantLon != null && sextantLockedData?.lockedShadowAzimuth != null
+
+                            if (isFullyDeduced) {
+                                Text(String.format("%.4f, %.4f", sextantLat!!, sextantLon!!), modifier = Modifier.weight(1f).clickable { shareCoordinate(sextantLat.toDouble(), sextantLon.toDouble()) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                            } else {
+                                Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
+                            }
+                        }
+
+                        HorizontalDivider(color = Color.Gray, thickness = 1.dp)
+
+                        var distanceString = "Waiting for measured locations..."
+                        var distanceColor = foregroundColor
+                        if (netLoc != null && gpsLoc != null) {
+                            val dist = netLoc.distanceTo(gpsLoc)
+                            distanceString = "${String.format("%.1f", dist)}m between measured locations"
+                            distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
+                        }
+                        Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = distanceColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                     }
 
-                    val netLoc = gnssState.networkLocation
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Network", fontWeight = FontWeight.Bold, color = foregroundColor)
-                            if (netLoc != null) Text(" ±${String.format("%.0f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
-                        }
-                        if (netLoc != null) {
-                            Text(String.format("%.4f, %.4f", netLoc.latitude, netLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(netLoc.latitude, netLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
-                        } else {
-                            Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-                        }
-                    }
-
-
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Text("GNSS", fontWeight = FontWeight.Bold, color = foregroundColor)
-                            if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
-                        }
-                        if (gpsLoc != null) {
-                            Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(gpsLoc.latitude, gpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
-                        } else {
-                            Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-                        }
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Sextant", fontWeight = FontWeight.Bold, color = foregroundColor)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("[Measure]", color = Color(0xFF64B5F6), fontSize = 12.sp, modifier = Modifier.clickable { onNavigateToSextant() })
-                        }
-                        val sextantLat = sextantLockedData?.deducedLatitude
-                        val sextantLon = sextantLockedData?.assumedOrDeducedLongitude
-                        // Only show if it was actively deduced (both lat and lon exist implies full compass deduction was used)
-                        val isFullyDeduced = sextantLat != null && sextantLon != null && sextantLockedData?.lockedShadowAzimuth != null
-
-                        if (isFullyDeduced) {
-                            Text(String.format("%.4f, %.4f", sextantLat!!, sextantLon!!), modifier = Modifier.weight(1f).clickable { shareCoordinate(sextantLat.toDouble(), sextantLon.toDouble()) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
-                        } else {
-                            Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
-                        }
-                    }
-
-                    HorizontalDivider(color = Color.Gray, thickness = 1.dp)
-
-                    var distanceString = "Waiting for measured locations..."
-                    var distanceColor = foregroundColor
-                    if (netLoc != null && gpsLoc != null) {
-                        val dist = netLoc.distanceTo(gpsLoc)
-                        distanceString = "${String.format("%.1f", dist)}m between measured locations"
-                        distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
-                    }
-                    Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = distanceColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                item { Spacer(modifier = Modifier.height(24.dp)) }
 
-                // Satellites Table
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                        Text("Constellation", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                        Text("In Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Green, textAlign = TextAlign.Center)
-                        Text("Not in Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Gray, textAlign = TextAlign.Center)
+                @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+                stickyHeader {
+                    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text("Satellites", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
+                            Text("In Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Green, textAlign = TextAlign.Center)
+                            Text("Not in Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Gray, textAlign = TextAlign.Center)
+                        }
+                        HorizontalDivider(color = Color.Gray, thickness = 1.dp, modifier = Modifier.padding(top = 4.dp))
                     }
-                    HorizontalDivider(color = Color.Gray, thickness = 1.dp)
+                }
 
+                item {
                     var expandedConstellation by remember { mutableStateOf<String?>(null) }
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                        gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
+                            val constelId = data.name
+                            Column(modifier = Modifier.fillMaxWidth().clickable {
+                                expandedConstellation = if (expandedConstellation == constelId) null else constelId
+                            }.padding(vertical = 8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    val prefix = if (expandedConstellation == constelId) "▼" else "▶"
+                                    Text("$prefix ${data.flag} ${data.name}", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
+                                    val notInFixCount = data.inViewCount - data.inFixCount
+                                    Text("${data.inFixCount}", modifier = Modifier.weight(1f), color = if (data.inFixCount > 0) Color.Green else Color.Gray, textAlign = TextAlign.Center)
+                                    Text("$notInFixCount", modifier = Modifier.weight(1f), color = Color.Gray, textAlign = TextAlign.Center)
+                                }
 
-                    gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
-                        val constelId = data.name
-                        Column(modifier = Modifier.fillMaxWidth().clickable {
-                            expandedConstellation = if (expandedConstellation == constelId) null else constelId
-                        }.padding(vertical = 8.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Text("${data.flag} ${data.name}", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                                val notInFixCount = data.inViewCount - data.inFixCount
-                                Text("${data.inFixCount}", modifier = Modifier.weight(1f), color = if (data.inFixCount > 0) Color.Green else Color.Gray, textAlign = TextAlign.Center)
-                                Text("$notInFixCount", modifier = Modifier.weight(1f), color = Color.Gray, textAlign = TextAlign.Center)
-                            }
-
-                            if (expandedConstellation == constelId) {
-                                val sortedSats = data.satellites.sortedByDescending { it.cn0DbHz }
-                                sortedSats.forEach { sat ->
-                                    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                                        Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", modifier = Modifier.weight(1.5f).padding(start = 24.dp), color = if (sat.usedInFix) Color.Green else Color.Gray, fontSize = 12.sp)
-                                        Text(if (sat.usedInFix) "✅" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Green)
-                                        Text(if (!sat.usedInFix) "✔️" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray)
+                                if (expandedConstellation == constelId) {
+                                    val sortedSats = data.satellites.sortedByDescending { it.cn0DbHz }
+                                    sortedSats.forEach { sat ->
+                                        Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                                            Text("SV${sat.svid}: ${String.format("%.1f", sat.cn0DbHz)}", modifier = Modifier.weight(1.5f).padding(start = 24.dp), color = if (sat.usedInFix) Color.Green else Color.Gray, fontSize = 12.sp)
+                                            Text(if (sat.usedInFix) "✅" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Green)
+                                            Text(if (!sat.usedInFix) "✔️" else "", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp, color = Color.Gray)
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    HorizontalDivider(color = Color.Gray, thickness = 1.dp)
-                    var showAverages by remember { mutableStateOf(false) }
-                    Column(modifier = Modifier.fillMaxWidth().clickable { showAverages = !showAverages }.padding(vertical = 8.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            Text("TOTAL", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
-                            val fixColor = if (gnssState.totalInFix < 4) Color.Red else Color.Green
-                            Text("${gnssState.totalInFix}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = fixColor, textAlign = TextAlign.Center)
-                            val totalNotInFix = gnssState.totalInView - gnssState.totalInFix
-                            Text("$totalNotInFix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Gray, textAlign = TextAlign.Center)
-                        }
-                        if (showAverages) {
-                            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                                Text("Average C/N0 (dB-Hz)", modifier = Modifier.weight(1.5f), color = Color.Gray, fontSize = 12.sp)
-                                Text(String.format("%.1f", gnssState.avgCn0InFix), modifier = Modifier.weight(1f), color = Color.Green, fontSize = 12.sp, textAlign = TextAlign.Center)
-                                Text(String.format("%.1f", gnssState.avgCn0OutFix), modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
+                        HorizontalDivider(color = Color.Gray, thickness = 1.dp)
+                        var showAverages by remember { mutableStateOf(false) }
+                        Column(modifier = Modifier.fillMaxWidth().clickable { showAverages = !showAverages }.padding(vertical = 8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Row(modifier = Modifier.weight(1.5f), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("TOTAL", fontWeight = FontWeight.Bold, color = foregroundColor)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    TextButton(onClick = {
+                                        val csvBuilder = StringBuilder()
+                                        csvBuilder.append("Constellation,SVID,C/N0(dB-Hz),In_Fix,Azimuth(deg),Elevation(deg),Has_Almanac,Has_Ephemeris,Carrier_Freq(Hz)\n")
+                                        gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
+                                            data.satellites.sortedByDescending { it.cn0DbHz }.forEach { sat ->
+                                                csvBuilder.append("${data.name},${sat.svid},${String.format("%.1f", sat.cn0DbHz)},${sat.usedInFix},${String.format("%.1f", sat.azimuthDegrees)},${String.format("%.1f", sat.elevationDegrees)},${sat.hasAlmanac},${sat.hasEphemeris},${sat.carrierFrequencyHz}\n")
+                                            }
+                                        }
+                                        csvContentToSave = csvBuilder.toString()
+                                        createDocumentLauncher.launch("gnss_diagnostics.csv")
+                                    }, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                                        Text("💾 CSV", fontSize = 12.sp)
+                                    }
+                                }
+                                val fixColor = if (gnssState.totalInFix < 4) Color.Red else Color.Green
+                                Text("${gnssState.totalInFix}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = fixColor, textAlign = TextAlign.Center)
+                                val totalNotInFix = gnssState.totalInView - gnssState.totalInFix
+                                Text("$totalNotInFix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Gray, textAlign = TextAlign.Center)
                             }
-                            if (gnssState.avgCn0OutFix > gnssState.avgCn0InFix && gnssState.avgCn0OutFix > 0f) {
-                                Text("Warning: Not-in-fix signals are stronger on average. Possible spoofing.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                            if (showAverages) {
+                                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                    Text("Average C/N0 (dB-Hz)", modifier = Modifier.weight(1.5f), color = Color.Gray, fontSize = 12.sp)
+                                    Text(String.format("%.1f", gnssState.avgCn0InFix), modifier = Modifier.weight(1f), color = Color.Green, fontSize = 12.sp, textAlign = TextAlign.Center)
+                                    Text(String.format("%.1f", gnssState.avgCn0OutFix), modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
+                                }
+                                if (gnssState.avgCn0OutFix > gnssState.avgCn0InFix && gnssState.avgCn0OutFix > 0f) {
+                                    Text("Warning: Not-in-fix signals are stronger on average. Possible spoofing.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                }
                             }
                         }
-                    }
-                    if (gnssState.totalInFix < 4 && gnssState.totalInView > 0) {
-                        Text("Warning: Very low total satellites in fix. Location unreliable.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = {
-                        val csvBuilder = StringBuilder()
-                        csvBuilder.append("Constellation,SVID,C/N0(dB-Hz),In_Fix,Azimuth(deg),Elevation(deg),Has_Almanac,Has_Ephemeris,Carrier_Freq(Hz)\n")
-                        gnssState.constellations.values.filter { it.inViewCount > 0 }.forEach { data ->
-                            data.satellites.sortedByDescending { it.cn0DbHz }.forEach { sat ->
-                                csvBuilder.append("${data.name},${sat.svid},${String.format("%.1f", sat.cn0DbHz)},${sat.usedInFix},${String.format("%.1f", sat.azimuthDegrees)},${String.format("%.1f", sat.elevationDegrees)},${sat.hasAlmanac},${sat.hasEphemeris},${sat.carrierFrequencyHz}\n")
-                            }
+                        if (gnssState.totalInFix < 4 && gnssState.totalInView > 0) {
+                            Text("Warning: Very low total satellites in fix. Location unreliable.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                         }
-                        csvContentToSave = csvBuilder.toString()
-                        createDocumentLauncher.launch("gnss_diagnostics.csv")
-                    }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                        Text("Download Satellite Data (CSV)")
                     }
                 }
-            } else {
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
