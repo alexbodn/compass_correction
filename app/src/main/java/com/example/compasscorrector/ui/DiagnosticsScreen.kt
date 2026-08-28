@@ -88,6 +88,7 @@ fun AccuracyGauge(score: Float, modifier: Modifier = Modifier) {
 @Composable
 fun DiagnosticsScreen(
     foregroundColor: Color,
+    backgroundColor: Color,
     magneticAzimuth: Float,
     magneticAccuracy: Int,
     magneticFieldStrength: Float,
@@ -214,7 +215,7 @@ fun DiagnosticsScreen(
 
                 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
                 stickyHeader {
-                    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().background(backgroundColor).padding(horizontal = 8.dp, vertical = 4.dp)) {
                         Row(modifier = Modifier.fillMaxWidth()) {
                             Text("Location Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
                             Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
@@ -305,7 +306,7 @@ fun DiagnosticsScreen(
 
                 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
                 stickyHeader {
-                    Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().background(backgroundColor).padding(horizontal = 8.dp, vertical = 4.dp)) {
                         Row(modifier = Modifier.fillMaxWidth()) {
                             Text("Satellites", modifier = Modifier.weight(1.5f), fontWeight = FontWeight.Bold, color = foregroundColor)
                             Text("In Fix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Green, textAlign = TextAlign.Center)
@@ -377,12 +378,12 @@ fun DiagnosticsScreen(
                                     Text(String.format("%.1f", gnssState.avgCn0OutFix), modifier = Modifier.weight(1f), color = Color.Gray, fontSize = 12.sp, textAlign = TextAlign.Center)
                                 }
                                 if (gnssState.avgCn0OutFix > gnssState.avgCn0InFix && gnssState.avgCn0OutFix > 0f) {
-                                    Text("Warning: Not-in-fix signals are stronger on average. Possible spoofing.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                                    Text("Warning: Not-in-fix signals are stronger on average. Possible spoofing.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(top = 4.dp), textAlign = TextAlign.Start)
                                 }
                             }
                         }
                         if (gnssState.totalInFix < 4 && gnssState.totalInView > 0) {
-                            Text("Warning: Very low total satellites in fix. Location unreliable.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                            Text("Warning: Very low total satellites in fix. Location unreliable.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start)
                         }
                     }
                 }

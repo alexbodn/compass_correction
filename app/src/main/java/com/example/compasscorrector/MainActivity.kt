@@ -463,6 +463,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 if (currentScreen == 5) {
                     DiagnosticsScreen(
                         foregroundColor = foregroundColor,
+                        backgroundColor = backgroundColor,
                         magneticAzimuth = magneticAzimuth,
                         magneticAccuracy = magneticAccuracy,
                         magneticFieldStrength = magneticFieldStrength,
