@@ -111,8 +111,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLocationPermission: Boolean, appPreferences: AppPreferences) {
+    val context = LocalContext.current
+    val gnssDiagnosticHelper = remember { GnssDiagnosticHelper(context) }
+    val gnssState by gnssDiagnosticHelper.state.collectAsState()
+
     var magneticAzimuth by remember { mutableStateOf(0f) }
-    var location by remember { mutableStateOf<android.location.Location?>(null) }
+    var rawLocation by remember { mutableStateOf<android.location.Location?>(null) }
+
+    // Validated Location: If we have < 4 satellites in fix, the FusedLocationProvider
+    // is likely faking a GPS signal via Network triangulation, so we nullify it.
+    val location = if (gnssState.totalInFix >= 4) rawLocation else null
 
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
 
@@ -169,11 +177,13 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 if (hasLocationPermission) {
                     locationHelper.startLocationUpdates { loc ->
-                        location = loc
+                        rawLocation = loc
                     }
+                    gnssDiagnosticHelper.startDiagnostics()
                 }
             } else if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
                 locationHelper.stopLocationUpdates()
+                gnssDiagnosticHelper.stopDiagnostics()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -181,15 +191,18 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         // Initial setup
         if (hasLocationPermission) {
             locationHelper.startLocationUpdates { loc ->
-                location = loc
+                rawLocation = loc
             }
+            gnssDiagnosticHelper.startDiagnostics()
         } else {
             locationHelper.stopLocationUpdates()
+            gnssDiagnosticHelper.stopDiagnostics()
         }
 
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             locationHelper.stopLocationUpdates()
+            gnssDiagnosticHelper.stopDiagnostics()
         }
     }
 
@@ -469,6 +482,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         magneticFieldStrength = magneticFieldStrength,
                         hasLocationPermission = hasLocationPermission,
                         sextantLockedData = sextantLockedData,
+                        gnssState = gnssState,
                         onNavigateToSextant = {
                             currentScreen = 2
                             selectedTabIndex = 2

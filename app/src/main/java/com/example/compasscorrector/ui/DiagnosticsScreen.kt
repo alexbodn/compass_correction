@@ -94,11 +94,10 @@ fun DiagnosticsScreen(
     magneticFieldStrength: Float,
     hasLocationPermission: Boolean,
     sextantLockedData: SextantLockedData?,
+    gnssState: GnssDiagnosticState,
     onNavigateToSextant: () -> Unit
 ) {
     val context = LocalContext.current
-    val helper = remember { GnssDiagnosticHelper(context) }
-    val gnssState by helper.state.collectAsState()
 
     var csvContentToSave by remember { mutableStateOf("") }
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -112,15 +111,6 @@ fun DiagnosticsScreen(
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-        }
-    }
-
-    DisposableEffect(hasLocationPermission) {
-        if (hasLocationPermission) {
-            helper.startDiagnostics()
-        }
-        onDispose {
-            helper.stopDiagnostics()
         }
     }
 
@@ -263,7 +253,14 @@ fun DiagnosticsScreen(
                                 if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
                             }
                             if (gpsLoc != null) {
-                                Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(gpsLoc.latitude, gpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                                if (gnssState.totalInFix < 4) {
+                                    Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
+                                        Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), color = Color.Gray, style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough), textAlign = TextAlign.End)
+                                        Text("Invalid (OS Simulated)", color = Color.Red, fontSize = 10.sp, textAlign = TextAlign.End)
+                                    }
+                                } else {
+                                    Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(gpsLoc.latitude, gpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                                }
                             } else {
                                 Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
                             }
@@ -292,9 +289,14 @@ fun DiagnosticsScreen(
                         var distanceString = "Waiting for measured locations..."
                         var distanceColor = foregroundColor
                         if (netLoc != null && gpsLoc != null) {
-                            val dist = netLoc.distanceTo(gpsLoc)
-                            distanceString = "${String.format("%.1f", dist)}m between measured locations"
-                            distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
+                            if (gnssState.totalInFix >= 4) {
+                                val dist = netLoc.distanceTo(gpsLoc)
+                                distanceString = "${String.format("%.1f", dist)}m between measured locations"
+                                distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
+                            } else {
+                                distanceString = "Cannot calculate distance. GNSS is simulated."
+                                distanceColor = Color.Red
+                            }
                         }
                         Text(distanceString, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), color = distanceColor, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
                     }
