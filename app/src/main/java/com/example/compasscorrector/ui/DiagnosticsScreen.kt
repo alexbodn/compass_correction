@@ -158,30 +158,14 @@ fun DiagnosticsScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        var showTestDialog by remember { mutableStateOf(false) }
-        if (showTestDialog) {
-            TestLocationDialog(onDismiss = { showTestDialog = false })
-        }
-
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.Top) {
             Text(
                 "Tools to diagnose your phone location and direction reliability.\nThe capabilities are very well designed, but measurements depend on environmental conditions that could be suboptimal or misleading.\nWe'll help you diagnose your conditions and find working alternatives, if needed.",
                 color = foregroundColor,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Start,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             )
-            Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Testing Values", color = foregroundColor, fontSize = 12.sp)
-                    Checkbox(
-                        checked = com.example.compasscorrector.TestLocationConfig.isTestingMode,
-                        onCheckedChange = {
-                            if (it) showTestDialog = true else com.example.compasscorrector.TestLocationConfig.isTestingMode = false
-                        }
-                    )
-                }
-            }
         }
 
         TabRow(selectedTabIndex = selectedTabIndex, containerColor = Color.Transparent, contentColor = foregroundColor) {
@@ -224,9 +208,22 @@ fun DiagnosticsScreen(
                 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
                 stickyHeader {
                     Column(modifier = Modifier.fillMaxWidth().background(backgroundColor).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Location Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
                             Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
+                            Text("💾 TSV", modifier = Modifier.padding(start = 8.dp).clickable {
+                                val tsvBuilder = StringBuilder()
+                                tsvBuilder.append("Method\tLatitude\tLongitude\tAccuracy(m)\n")
+
+                                val nLoc = gnssState.networkLocation
+                                if (nLoc != null) tsvBuilder.append("Network\t${nLoc.latitude}\t${nLoc.longitude}\t${nLoc.accuracy}\n")
+
+                                val gLoc = gnssState.gpsLocation
+                                if (gLoc != null) tsvBuilder.append("GNSS\t${gLoc.latitude}\t${gLoc.longitude}\t${gLoc.accuracy}\n")
+
+                                csvContentToSave = tsvBuilder.toString()
+                                createDocumentLauncher.launch("locations.tsv")
+                            }, color = Color(0xFF64B5F6), fontWeight = FontWeight.Bold)
                         }
                         HorizontalDivider(color = Color.Gray, thickness = 1.dp, modifier = Modifier.padding(top = 4.dp))
                     }
@@ -251,11 +248,25 @@ fun DiagnosticsScreen(
                             }
                         }
 
-                        val netLoc = gnssState.networkLocation
+                        val netLoc = if (com.example.compasscorrector.TestLocationConfig.networkSpoofEnabled) {
+                            if (com.example.compasscorrector.TestLocationConfig.networkAvailable) {
+                                val coords = com.example.compasscorrector.TestLocationConfig.networkSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
+                                android.location.Location("mock_network").apply {
+                                    latitude = coords.getOrNull(0) ?: 0.0
+                                    longitude = coords.getOrNull(1) ?: 0.0
+                                    accuracy = 0f
+                                }
+                            } else null
+                        } else gnssState.networkLocation
+
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Network", fontWeight = FontWeight.Bold, color = foregroundColor)
-                                if (netLoc != null) Text(" ±${String.format("%.0f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                                if (com.example.compasscorrector.TestLocationConfig.networkSpoofEnabled) {
+                                    Text(" (Spoofed)", color = Color.Yellow, fontSize = 10.sp)
+                                } else if (netLoc != null) {
+                                    Text(" ±${String.format("%.0f", netLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                                }
                             }
                             if (netLoc != null) {
                                 Text(String.format("%.4f, %.4f", netLoc.latitude, netLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(netLoc.latitude, netLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
@@ -264,20 +275,36 @@ fun DiagnosticsScreen(
                             }
                         }
 
+                        val actualGpsLoc = if (com.example.compasscorrector.TestLocationConfig.gnssSpoofEnabled) {
+                            val coords = com.example.compasscorrector.TestLocationConfig.gnssSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
+                            android.location.Location("mock_gps").apply {
+                                latitude = coords.getOrNull(0) ?: 0.0
+                                longitude = coords.getOrNull(1) ?: 0.0
+                                accuracy = 0f
+                            }
+                        } else gpsLoc
+
+                        val actualInFix = if (com.example.compasscorrector.TestLocationConfig.gnssSpoofEnabled) {
+                            com.example.compasscorrector.TestLocationConfig.gnssInFix.toIntOrNull() ?: 0
+                        } else gnssState.totalInFix
 
                         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                             Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Text("GNSS", fontWeight = FontWeight.Bold, color = foregroundColor)
-                                if (gpsLoc != null) Text(" ±${String.format("%.0f", gpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                                if (com.example.compasscorrector.TestLocationConfig.gnssSpoofEnabled) {
+                                    Text(" (Spoofed)", color = Color.Yellow, fontSize = 10.sp)
+                                } else if (actualGpsLoc != null) {
+                                    Text(" ±${String.format("%.0f", actualGpsLoc.accuracy)}m", color = Color.Gray, fontSize = 10.sp)
+                                }
                             }
-                            if (gpsLoc != null) {
-                                if (gnssState.totalInFix < 4) {
+                            if (actualGpsLoc != null) {
+                                if (actualInFix < 4) {
                                     Column(horizontalAlignment = Alignment.End, modifier = Modifier.weight(1f)) {
-                                        Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), color = Color.Gray, style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough), textAlign = TextAlign.End)
+                                        Text(String.format("%.4f, %.4f", actualGpsLoc.latitude, actualGpsLoc.longitude), color = Color.Gray, style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough), textAlign = TextAlign.End)
                                         Text("Invalid (OS Simulated)", color = Color.Red, fontSize = 10.sp, textAlign = TextAlign.End)
                                     }
                                 } else {
-                                    Text(String.format("%.4f, %.4f", gpsLoc.latitude, gpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(gpsLoc.latitude, gpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
+                                    Text(String.format("%.4f, %.4f", actualGpsLoc.latitude, actualGpsLoc.longitude), modifier = Modifier.weight(1f).clickable { shareCoordinate(actualGpsLoc.latitude, actualGpsLoc.longitude) }, color = Color(0xFF64B5F6), textAlign = TextAlign.End)
                                 }
                             } else {
                                 Text("-", modifier = Modifier.weight(1f), color = foregroundColor, textAlign = TextAlign.End)
@@ -306,9 +333,9 @@ fun DiagnosticsScreen(
 
                         var distanceString = "Waiting for measured locations..."
                         var distanceColor = foregroundColor
-                        if (netLoc != null && gpsLoc != null) {
-                            if (gnssState.totalInFix >= 4) {
-                                val dist = netLoc.distanceTo(gpsLoc)
+                        if (netLoc != null && actualGpsLoc != null) {
+                            if (actualInFix >= 4) {
+                                val dist = netLoc.distanceTo(actualGpsLoc)
                                 distanceString = "${String.format("%.1f", dist)}m between measured locations"
                                 distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
                             } else {

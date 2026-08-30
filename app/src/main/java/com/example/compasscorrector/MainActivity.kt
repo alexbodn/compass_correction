@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.example.compasscorrector.ui.DiagnosticsScreen
+import com.example.compasscorrector.ui.SpoofScreen
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -119,23 +120,25 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var rawLocation by remember { mutableStateOf<android.location.Location?>(null) }
 
     // Location Routing Logic (Mocking vs Real)
-    val effectiveInFix = if (TestLocationConfig.isTestingMode) {
+    val effectiveInFix = if (TestLocationConfig.gnssSpoofEnabled) {
         TestLocationConfig.gnssInFix.toIntOrNull() ?: 0
     } else {
         gnssState.totalInFix
     }
 
     val locationStatus = if (TestLocationConfig.isTestingMode) {
-        if (effectiveInFix >= 4) {
+        if (TestLocationConfig.gnssSpoofEnabled && effectiveInFix >= 4) {
+            val coords = TestLocationConfig.gnssSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
             val loc = android.location.Location("mock_gps").apply {
-                latitude = TestLocationConfig.gnssLat.toDoubleOrNull() ?: 0.0
-                longitude = TestLocationConfig.gnssLon.toDoubleOrNull() ?: 0.0
+                latitude = coords.getOrNull(0) ?: 0.0
+                longitude = coords.getOrNull(1) ?: 0.0
             }
             LocationStatus.Valid(loc, "GPS")
-        } else if (TestLocationConfig.networkAvailable) {
+        } else if (TestLocationConfig.networkSpoofEnabled && TestLocationConfig.networkAvailable) {
+            val coords = TestLocationConfig.networkSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
             val loc = android.location.Location("mock_network").apply {
-                latitude = TestLocationConfig.networkLat.toDoubleOrNull() ?: 0.0
-                longitude = TestLocationConfig.networkLon.toDoubleOrNull() ?: 0.0
+                latitude = coords.getOrNull(0) ?: 0.0
+                longitude = coords.getOrNull(1) ?: 0.0
             }
             LocationStatus.Valid(loc, "Network")
         } else {
@@ -468,6 +471,16 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
                     colors = drawerColors
                 )
+                NavigationDrawerItem(
+                    label = { Text("Spoof Location") },
+                    selected = currentScreen == 6,
+                    onClick = {
+                        currentScreen = 6
+                        coroutineScope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    colors = drawerColors
+                )
             }
         }
     ) {
@@ -484,6 +497,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             3 -> "Settings"
                             4 -> "Watch Study"
                             5 -> "Diagnostics"
+                            6 -> "Spoof Location"
                             else -> "Compass Corrector"
                         }
                         Text(titleText, fontWeight = FontWeight.Bold)
@@ -508,7 +522,12 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                if (currentScreen == 5) {
+                if (currentScreen == 6) {
+                    SpoofScreen(
+                        foregroundColor = foregroundColor,
+                        backgroundColor = backgroundColor
+                    )
+                } else if (currentScreen == 5) {
                     DiagnosticsScreen(
                         foregroundColor = foregroundColor,
                         backgroundColor = backgroundColor,
