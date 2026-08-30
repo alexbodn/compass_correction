@@ -118,10 +118,44 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var magneticAzimuth by remember { mutableStateOf(0f) }
     var rawLocation by remember { mutableStateOf<android.location.Location?>(null) }
 
-    // Prioritize GNSS Fused Location if we have a hardware fix. If GNSS is failing or spoofed (< 4 satellites),
-    // explicitly fall back to the pure Network provider (Wi-Fi/Cell) if available. It is significantly better
-    // for SPA calculations than relying on a Timezone-only fallback.
-    val location = if (gnssState.totalInFix >= 4) rawLocation else (gnssState.networkLocation ?: rawLocation)
+    // Location Routing Logic (Mocking vs Real)
+    val effectiveInFix = if (TestLocationConfig.isTestingMode) {
+        TestLocationConfig.gnssInFix.toIntOrNull() ?: 0
+    } else {
+        gnssState.totalInFix
+    }
+
+    val locationStatus = if (TestLocationConfig.isTestingMode) {
+        if (effectiveInFix >= 4) {
+            val loc = android.location.Location("mock_gps").apply {
+                latitude = TestLocationConfig.gnssLat.toDoubleOrNull() ?: 0.0
+                longitude = TestLocationConfig.gnssLon.toDoubleOrNull() ?: 0.0
+            }
+            LocationStatus.Valid(loc, "GPS")
+        } else if (TestLocationConfig.networkAvailable) {
+            val loc = android.location.Location("mock_network").apply {
+                latitude = TestLocationConfig.networkLat.toDoubleOrNull() ?: 0.0
+                longitude = TestLocationConfig.networkLon.toDoubleOrNull() ?: 0.0
+            }
+            LocationStatus.Valid(loc, "Network")
+        } else {
+            LocationStatus.Invalid("No valid location: GPS needs 4+ satellites (currently $effectiveInFix), Network disabled.")
+        }
+    } else {
+        if (effectiveInFix >= 4) {
+            val loc = gnssState.gpsLocation ?: rawLocation
+            if (loc != null) LocationStatus.Valid(loc, "GPS") else LocationStatus.Invalid("Waiting for GPS lock...")
+        } else if (gnssState.networkLocation != null) {
+            LocationStatus.Valid(gnssState.networkLocation!!, "Network")
+        } else if (rawLocation != null) {
+            // Fallback for cases where direct LocationManager is slow but generic listener fired
+            LocationStatus.Valid(rawLocation!!, "Generic")
+        } else {
+            LocationStatus.Invalid("No valid location: GPS needs 4+ satellites (currently $effectiveInFix), Network unavailable.")
+        }
+    }
+
+    val location = (locationStatus as? LocationStatus.Valid)?.location
 
     val defaultDst = java.util.TimeZone.getDefault().inDaylightTime(java.util.Date())
 
@@ -557,6 +591,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         relativeMagneticNorth = relativeMagneticNorth,
                         currentTimeMillis = currentTimeMillis,
                         location = location,
+                        locationStatus = locationStatus,
                         magneticAzimuth = magneticAzimuth,
                         useGNSS = solarUseGNSS,
                         onUseGNSSChange = { solarUseGNSS = it },
@@ -590,6 +625,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         relativeMagneticNorth = relativeMagneticNorth,
                         currentTimeMillis = currentTimeMillis,
                         location = location,
+                        locationStatus = locationStatus,
                         magneticAzimuth = magneticAzimuth,
                         useGNSS = lunarUseGNSS,
                         onUseGNSSChange = { lunarUseGNSS = it },
@@ -631,6 +667,7 @@ fun CelestialToolTab(
     relativeMagneticNorth: Float,
     currentTimeMillis: Long,
     location: android.location.Location?,
+    locationStatus: LocationStatus,
     magneticAzimuth: Float,
     useGNSS: Boolean,
     onUseGNSSChange: (Boolean) -> Unit,
@@ -1173,31 +1210,41 @@ fun CelestialToolTab(
                 modifier = Modifier.fillMaxWidth(0.8f),
                 horizontalAlignment = Alignment.Start
             ) {
-                val gnssEnabled = hasLocationPermission
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = gnssEnabled) { onUseGNSSChange(!useGNSS) }
-                ) {
-                    Checkbox(
-                        checked = useGNSS && gnssEnabled,
-                        onCheckedChange = null,
-                        enabled = gnssEnabled,
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = Color.Blue,
-                            uncheckedColor = foregroundColor,
-                            checkmarkColor = Color.White,
-                            disabledUncheckedColor = Color.Gray,
-                            disabledCheckedColor = Color.Gray
+                val gnssEnabled = hasLocationPermission && locationStatus is LocationStatus.Valid
+
+                if (locationStatus is LocationStatus.Invalid) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    ) {
+                        Text(locationStatus.reason, color = Color.Red, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable(enabled = gnssEnabled) { onUseGNSSChange(!useGNSS) }
+                    ) {
+                        Checkbox(
+                            checked = useGNSS && gnssEnabled,
+                            onCheckedChange = null,
+                            enabled = gnssEnabled,
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color.Blue,
+                                uncheckedColor = foregroundColor,
+                                checkmarkColor = Color.White,
+                                disabledUncheckedColor = Color.Gray,
+                                disabledCheckedColor = Color.Gray
+                            )
                         )
-                    )
-                    Text("Use GNSS for ${if (isLunar) "Lunar" else "Solar"} North", color = if (gnssEnabled) foregroundColor else Color.Gray)
+                        Text("Use GNSS for ${if (isLunar) "Lunar" else "Solar"} North", color = if (gnssEnabled) foregroundColor else Color.Gray)
+                    }
                 }
 
                 if (!hasLocationPermission) {
-                    Text("GNSS disabled/unavailable. Using fallback calculations.", color = Color.Red, fontSize = 12.sp)
+                    Text("Location permission missing. Using fallback calculations.", color = Color.Red, fontSize = 12.sp)
                 }
 
-                val isFallbackActive = !useGNSS || !hasLocationPermission || location == null
+                val isFallbackActive = !useGNSS || !hasLocationPermission || locationStatus is LocationStatus.Invalid
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

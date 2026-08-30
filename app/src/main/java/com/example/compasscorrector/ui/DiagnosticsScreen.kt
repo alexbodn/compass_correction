@@ -158,13 +158,31 @@ fun DiagnosticsScreen(
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            "Tools to diagnose your phone location and direction reliability.\nThe capabilities are very well designed, but measurements depend on environmental conditions that could be suboptimal or misleading.\nWe'll help you diagnose your conditions and find working alternatives, if needed.",
-            color = foregroundColor,
-            fontSize = 12.sp,
-            textAlign = TextAlign.Start,
-            modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth()
-        )
+        var showTestDialog by remember { mutableStateOf(false) }
+        if (showTestDialog) {
+            TestLocationDialog(onDismiss = { showTestDialog = false })
+        }
+
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.Top) {
+            Text(
+                "Tools to diagnose your phone location and direction reliability.\nThe capabilities are very well designed, but measurements depend on environmental conditions that could be suboptimal or misleading.\nWe'll help you diagnose your conditions and find working alternatives, if needed.",
+                color = foregroundColor,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.weight(1f)
+            )
+            Column(horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Testing Values", color = foregroundColor, fontSize = 12.sp)
+                    Checkbox(
+                        checked = com.example.compasscorrector.TestLocationConfig.isTestingMode,
+                        onCheckedChange = {
+                            if (it) showTestDialog = true else com.example.compasscorrector.TestLocationConfig.isTestingMode = false
+                        }
+                    )
+                }
+            }
+        }
 
         TabRow(selectedTabIndex = selectedTabIndex, containerColor = Color.Transparent, contentColor = foregroundColor) {
             Tab(
