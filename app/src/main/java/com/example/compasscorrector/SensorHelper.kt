@@ -23,6 +23,9 @@ class SensorHelper(context: Context) : SensorEventListener {
     private val orientationAngles = FloatArray(3)
 
     var onAzimuthChanged: ((Float) -> Unit)? = null
+    var onInclinationChanged: ((pitch: Float, roll: Float) -> Unit)? = null
+    var onMagneticAccuracyChanged: ((Int) -> Unit)? = null
+    var onMagneticFieldStrengthChanged: ((Float) -> Unit)? = null
 
     fun start() {
         accelerometer?.let {
@@ -46,6 +49,10 @@ class SensorHelper(context: Context) : SensorEventListener {
         } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
             System.arraycopy(event.values, 0, lastMagnetometer, 0, event.values.size)
             lastMagnetometerSet = true
+
+            // Calculate field strength in uT
+            val strength = kotlin.math.sqrt(event.values[0]*event.values[0] + event.values[1]*event.values[1] + event.values[2]*event.values[2])
+            onMagneticFieldStrengthChanged?.invoke(strength)
         }
 
         if (lastAccelerometerSet && lastMagnetometerSet) {
@@ -61,10 +68,19 @@ class SensorHelper(context: Context) : SensorEventListener {
             }
 
             onAzimuthChanged?.invoke(azimuthInDegrees)
+
+            // Pitch and Roll in degrees
+            val pitchInDegrees = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+            val rollInDegrees = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
+            onInclinationChanged?.invoke(pitchInDegrees, rollInDegrees)
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        if (sensor?.type == Sensor.TYPE_MAGNETIC_FIELD) {
+            onMagneticAccuracyChanged?.invoke(accuracy)
+        }
+    }
 
     companion object {
         fun getDeclination(latitude: Double, longitude: Double, altitude: Double, timeMillis: Long): Float {
