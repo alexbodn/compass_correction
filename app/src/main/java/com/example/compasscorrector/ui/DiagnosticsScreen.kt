@@ -211,19 +211,6 @@ fun DiagnosticsScreen(
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Location Method", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor)
                             Text("Coordinates (Lat, Lon)", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = foregroundColor, textAlign = TextAlign.End)
-                            Text("💾 TSV", modifier = Modifier.padding(start = 8.dp).clickable {
-                                val tsvBuilder = StringBuilder()
-                                tsvBuilder.append("Method\tLatitude\tLongitude\tAccuracy(m)\n")
-
-                                val nLoc = gnssState.networkLocation
-                                if (nLoc != null) tsvBuilder.append("Network\t${nLoc.latitude}\t${nLoc.longitude}\t${nLoc.accuracy}\n")
-
-                                val gLoc = gnssState.gpsLocation
-                                if (gLoc != null) tsvBuilder.append("GNSS\t${gLoc.latitude}\t${gLoc.longitude}\t${gLoc.accuracy}\n")
-
-                                csvContentToSave = tsvBuilder.toString()
-                                createDocumentLauncher.launch("locations.tsv")
-                            }, color = Color(0xFF64B5F6), fontWeight = FontWeight.Bold)
                         }
                         HorizontalDivider(color = Color.Gray, thickness = 1.dp, modifier = Modifier.padding(top = 4.dp))
                     }
@@ -331,12 +318,29 @@ fun DiagnosticsScreen(
 
                         HorizontalDivider(color = Color.Gray, thickness = 1.dp)
 
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+                            Text("💾 TSV", modifier = Modifier.clickable {
+                                val tsvBuilder = StringBuilder()
+                                tsvBuilder.append("Method\tLatitude\tLongitude\tAccuracy(m)\n")
+
+                                if (netLoc != null) tsvBuilder.append("Network\t${netLoc.latitude}\t${netLoc.longitude}\t${netLoc.accuracy}\n")
+                                if (actualGpsLoc != null) tsvBuilder.append("GNSS\t${actualGpsLoc.latitude}\t${actualGpsLoc.longitude}\t${actualGpsLoc.accuracy}\n")
+
+                                csvContentToSave = tsvBuilder.toString()
+                                createDocumentLauncher.launch("locations.tsv")
+                            }, color = Color(0xFF64B5F6), fontWeight = FontWeight.Bold)
+                        }
+
                         var distanceString = "Waiting for measured locations..."
                         var distanceColor = foregroundColor
                         if (netLoc != null && actualGpsLoc != null) {
                             if (actualInFix >= 4) {
                                 val dist = netLoc.distanceTo(actualGpsLoc)
-                                distanceString = "${String.format("%.1f", dist)}m between measured locations"
+                                if (dist >= 1000f) {
+                                    distanceString = "${String.format("%.1f", dist / 1000f)} km between gnss and network locations."
+                                } else {
+                                    distanceString = "${String.format("%.1f", dist)} m between gnss and network locations."
+                                }
                                 distanceColor = if (dist < 15f) Color.Green else if (dist < 50f) Color.Yellow else Color.Red
                             } else {
                                 distanceString = "Cannot calculate distance. GNSS is simulated."
@@ -413,9 +417,12 @@ fun DiagnosticsScreen(
                                         Text("💾 CSV", fontSize = 12.sp)
                                     }
                                 }
-                                val fixColor = if (gnssState.totalInFix < 4) Color.Red else Color.Green
-                                Text("${gnssState.totalInFix}", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = fixColor, textAlign = TextAlign.Center)
-                                val totalNotInFix = gnssState.totalInView - gnssState.totalInFix
+                                val actualInFix = if (com.example.compasscorrector.TestLocationConfig.gnssSpoofEnabled) {
+                                    com.example.compasscorrector.TestLocationConfig.gnssInFix.toIntOrNull() ?: 0
+                                } else gnssState.totalInFix
+                                val fixColor = if (actualInFix < 4) Color.Red else Color.Green
+                                Text("$actualInFix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = fixColor, textAlign = TextAlign.Center)
+                                val totalNotInFix = kotlin.math.max(0, gnssState.totalInView - actualInFix)
                                 Text("$totalNotInFix", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color.Gray, textAlign = TextAlign.Center)
                             }
                             if (showAverages) {

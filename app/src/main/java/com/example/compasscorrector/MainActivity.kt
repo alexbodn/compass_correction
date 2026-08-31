@@ -126,36 +126,36 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         gnssState.totalInFix
     }
 
-    val locationStatus = if (TestLocationConfig.isTestingMode) {
-        if (TestLocationConfig.gnssSpoofEnabled && effectiveInFix >= 4) {
-            val coords = TestLocationConfig.gnssSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
-            val loc = android.location.Location("mock_gps").apply {
-                latitude = coords.getOrNull(0) ?: 0.0
-                longitude = coords.getOrNull(1) ?: 0.0
-            }
-            LocationStatus.Valid(loc, "GPS")
-        } else if (TestLocationConfig.networkSpoofEnabled && TestLocationConfig.networkAvailable) {
-            val coords = TestLocationConfig.networkSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
-            val loc = android.location.Location("mock_network").apply {
-                latitude = coords.getOrNull(0) ?: 0.0
-                longitude = coords.getOrNull(1) ?: 0.0
-            }
-            LocationStatus.Valid(loc, "Network")
-        } else {
-            LocationStatus.Invalid("No valid location: GPS needs 4+ satellites (currently $effectiveInFix), Network disabled.")
-        }
-    } else {
+    val gpsLocToUse = if (TestLocationConfig.gnssSpoofEnabled) {
         if (effectiveInFix >= 4) {
-            val loc = gnssState.gpsLocation ?: rawLocation
-            if (loc != null) LocationStatus.Valid(loc, "GPS") else LocationStatus.Invalid("Waiting for GPS lock...")
-        } else if (gnssState.networkLocation != null) {
-            LocationStatus.Valid(gnssState.networkLocation!!, "Network")
-        } else if (rawLocation != null) {
-            // Fallback for cases where direct LocationManager is slow but generic listener fired
-            LocationStatus.Valid(rawLocation!!, "Generic")
-        } else {
-            LocationStatus.Invalid("No valid location: GPS needs 4+ satellites (currently $effectiveInFix), Network unavailable.")
-        }
+            val coords = TestLocationConfig.gnssSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
+            android.location.Location("mock_gps").apply {
+                latitude = coords.getOrNull(0) ?: 0.0
+                longitude = coords.getOrNull(1) ?: 0.0
+            }
+        } else null
+    } else {
+        if (effectiveInFix >= 4) gnssState.gpsLocation ?: rawLocation else null
+    }
+
+    val netLocToUse = if (TestLocationConfig.networkSpoofEnabled) {
+        if (TestLocationConfig.networkAvailable) {
+            val coords = TestLocationConfig.networkSpoofCoords.split(",").map { it.trim().toDoubleOrNull() ?: 0.0 }
+            android.location.Location("mock_network").apply {
+                latitude = coords.getOrNull(0) ?: 0.0
+                longitude = coords.getOrNull(1) ?: 0.0
+            }
+        } else null
+    } else gnssState.networkLocation
+
+    val locationStatus = if (gpsLocToUse != null) {
+        LocationStatus.Valid(gpsLocToUse, "GPS")
+    } else if (netLocToUse != null) {
+        LocationStatus.Valid(netLocToUse, "Network")
+    } else if (!TestLocationConfig.gnssSpoofEnabled && !TestLocationConfig.networkSpoofEnabled && rawLocation != null) {
+        LocationStatus.Valid(rawLocation!!, "Generic")
+    } else {
+        LocationStatus.Invalid("No valid location: GPS needs 4+ satellites (currently $effectiveInFix), Network unavailable.")
     }
 
     val location = (locationStatus as? LocationStatus.Valid)?.location
@@ -490,7 +490,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                 @OptIn(ExperimentalMaterial3Api::class)
                 TopAppBar(
                     title = {
-                        val titleText = when (currentScreen) {
+                        var titleText = when (currentScreen) {
                             0 -> "Solar Corrector"
                             1 -> "Lunar Corrector"
                             2 -> "Sextant Tool"
@@ -500,7 +500,17 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                             6 -> "Spoof Location"
                             else -> "Compass Corrector"
                         }
-                        Text(titleText, fontWeight = FontWeight.Bold)
+
+                        if (TestLocationConfig.isTestingMode) {
+                            val spoofedParts = mutableListOf<String>()
+                            if (TestLocationConfig.gnssSpoofEnabled) spoofedParts.add("GNSS")
+                            if (TestLocationConfig.networkSpoofEnabled) spoofedParts.add("Network")
+                            if (spoofedParts.isNotEmpty()) {
+                                titleText += " (Spoofed: ${spoofedParts.joinToString(", ")})"
+                            }
+                        }
+
+                        Text(titleText, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     },
                     navigationIcon = {
                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
