@@ -1501,7 +1501,7 @@ fun SextantScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
         val (liveAlt, _, isReverseLandscape) = InclinationHelper.calculateAltitudeAndOrientation(livePitch, liveRoll)
-
+        val isHorizontal = kotlin.math.abs(livePitch) <= 10f
 
         var isManualShadowAzimuth by remember { mutableStateOf(false) }
         var manualShadowAzimuthStr by remember { mutableStateOf("") }
@@ -1535,7 +1535,7 @@ fun SextantScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                    Text("Measured Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Measured Sun Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                     Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                 }
 
@@ -1637,23 +1637,35 @@ fun SextantScreen(
                     }
                 }
 
-                Button(
-                    onClick = {
-                        if (lockedData == null) {
-                            onLockedDataChange(SextantLockedData(
-                                altitude = liveAlt,
-                                declination = sunData.declination.toFloat(),
-                                deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
-                                assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
-                                lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
-                            ))
-                        } else {
-                            onLockedDataChange(null)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
-                ) {
-                    Text(if (lockedData == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+                if (isHorizontal || lockedData != null) {
+                    Button(
+                        onClick = {
+                            if (lockedData == null) {
+                                onLockedDataChange(SextantLockedData(
+                                    altitude = liveAlt,
+                                    declination = sunData.declination.toFloat(),
+                                    deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
+                                    assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
+                                    lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
+                                ))
+                            } else {
+                                onLockedDataChange(null)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
+                    ) {
+                        Text(if (lockedData == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "For measuring, please keep the phone horizontally.",
+                            color = Color.Red,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
@@ -1899,35 +1911,20 @@ Press with the other hand the lock measurement button.""",
             }
         }
         // Top 60%: Rotated Interactive Controls
-        // Enforce landscape for 3D measurement tools
-        val isPortrait = kotlin.math.abs(liveRoll) < 45f || kotlin.math.abs(liveRoll) > 135f
-
         BoxWithConstraints(
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            if (isPortrait) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                    Text(
-                        text = "For measuring, please keep the phone horizontally.",
-                        color = Color.Red,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                val rotatedWidth = maxHeight
-                val rotatedHeight = maxWidth
+            val rotatedWidth = maxHeight
+            val rotatedHeight = maxWidth
 
-                Box(
-                    modifier = Modifier
-                        .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
-                        .requiredSize(width = rotatedWidth, height = rotatedHeight)
-                        .padding(16.dp)
-                ) {
-                    interactiveControlsData(Modifier.fillMaxSize())
-                }
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
+                    .requiredSize(width = rotatedWidth, height = rotatedHeight)
+                    .padding(16.dp)
+            ) {
+                interactiveControlsData(Modifier.fillMaxSize())
             }
         }
 
