@@ -1505,9 +1505,15 @@ fun SextantScreen(
 
         var isManualShadowAzimuth by remember { mutableStateOf(false) }
         var manualShadowAzimuthStr by remember { mutableStateOf("") }
+        var isManualAltitude by remember { mutableStateOf(false) }
+        var manualAltitudeStr by remember { mutableStateOf("") }
 
-        val interactiveControlsData = @Composable { modifier: Modifier ->
-            // Pre-calculate live values
+        // Retain last known horizontal values
+        var lastHorizontalAzimuth by remember { mutableStateOf(0f) }
+        var lastHorizontalAltitude by remember { mutableStateOf(0f) }
+
+        // Update retained values only when horizontal
+        if (isHorizontal) {
             var liveTrueAzimuth = magneticAzimuth
             if (useTrueNorth && location != null) {
                 val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
@@ -1518,16 +1524,28 @@ fun SextantScreen(
             } else {
                 (liveTrueAzimuth - 90f + 360f) % 360f
             }
-            val shadowAzimuth = (liveSunAzimuth + 180f) % 360f
+            lastHorizontalAzimuth = liveSunAzimuth
+            lastHorizontalAltitude = liveAlt
+        }
+
+        val interactiveControlsData = @Composable { modifier: Modifier ->
+            // Pre-calculate live values
+            val shadowAzimuth = (lastHorizontalAzimuth + 180f) % 360f
             val effectiveSunAzimuth = if (isManualShadowAzimuth && manualShadowAzimuthStr.toFloatOrNull() != null) {
                 (manualShadowAzimuthStr.toFloat() + 180f) % 360f
             } else {
-                liveSunAzimuth
+                lastHorizontalAzimuth
             }
-            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(liveAlt, effectiveSunAzimuth, sunData.declination, currentTimeMillis) else null
-            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(liveAlt, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
+            val effectiveAltitude = if (isManualAltitude && manualAltitudeStr.toFloatOrNull() != null) {
+                manualAltitudeStr.toFloat()
+            } else {
+                lastHorizontalAltitude
+            }
 
-            val displayAltitude = lockedData?.altitude ?: liveAlt
+            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, sunData.declination, currentTimeMillis) else null
+            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
+
+            val displayAltitude = lockedData?.altitude ?: effectiveAltitude
             val displayDeclination = lockedData?.declination ?: sunData.declination
 
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1535,8 +1553,8 @@ fun SextantScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                    Text("Measured Sun Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                     Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
+                    Text("Measured Sun Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1566,15 +1584,44 @@ fun SextantScreen(
                     )
                     Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
                 }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable(enabled = lockedData == null) {
+                            isManualAltitude = !isManualAltitude
+                            if (isManualAltitude && lockedData == null) {
+                                manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
+                            }
+                        }
+                    ) {
+                        Checkbox(
+                            checked = isManualAltitude,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
+                            enabled = lockedData == null
+                        )
+                        Text("Manual Altitude", color = foregroundColor, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    if (!isManualAltitude && lockedData == null) {
+                        manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
+                    }
+
+                    OutlinedTextField(
+                        value = if (lockedData != null) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr,
+                        onValueChange = { manualAltitudeStr = it.replace(',', '.') },
+                        label = { Text("Altitude (°)") },
+                        modifier = Modifier.weight(1f).padding(end = 16.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor),
+                        enabled = isManualAltitude && lockedData == null,
+                        singleLine = true
+                    )
+                }
+
                 if (useCompassForFullLocation) {
                     Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), textAlign = TextAlign.Start)
-
-                    // Use locked shadow azimuth if data is locked, otherwise use the live/manual logic
-                    val displayShadowAzimuth = lockedData?.lockedShadowAzimuth ?: if (isManualShadowAzimuth) {
-                        manualShadowAzimuthStr.toFloatOrNull() ?: shadowAzimuth
-                    } else {
-                        shadowAzimuth
-                    }
 
                     if (!isManualShadowAzimuth && lockedData == null) {
                         // Auto-update string while manual is off and not locked
@@ -1642,7 +1689,7 @@ fun SextantScreen(
                         onClick = {
                             if (lockedData == null) {
                                 onLockedDataChange(SextantLockedData(
-                                    altitude = liveAlt,
+                                    altitude = effectiveAltitude,
                                     declination = sunData.declination.toFloat(),
                                     deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
                                     assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
@@ -1915,13 +1962,16 @@ Press with the other hand the lock measurement button.""",
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            val rotatedWidth = maxHeight
-            val rotatedHeight = maxWidth
+            val isPortraitHeld = kotlin.math.abs(liveRoll) < 45f || kotlin.math.abs(liveRoll) > 135f
+
+            val boxWidth = if (isPortraitHeld) maxWidth else maxHeight
+            val boxHeight = if (isPortraitHeld) maxHeight else maxWidth
+            val rotZ = if (isPortraitHeld) 0f else (if (isReverseLandscape) -90f else 90f)
 
             Box(
                 modifier = Modifier
-                    .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
-                    .requiredSize(width = rotatedWidth, height = rotatedHeight)
+                    .graphicsLayer { rotationZ = rotZ }
+                    .requiredSize(width = boxWidth, height = boxHeight)
                     .padding(16.dp)
             ) {
                 interactiveControlsData(Modifier.fillMaxSize())
