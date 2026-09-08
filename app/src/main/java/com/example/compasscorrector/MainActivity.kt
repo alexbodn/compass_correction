@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Menu
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.border
 import com.example.compasscorrector.ui.DiagnosticsScreen
 import com.example.compasscorrector.ui.SpoofScreen
 
@@ -1549,47 +1551,28 @@ fun SextantScreen(
 
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                    Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                }
-
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (!useCompassForFullLocation) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                        Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
-                        Button(
-                            onClick = { onIsNorthernHemisphereChange(true) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("N") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = { onIsNorthernHemisphereChange(false) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("S") }
-                    }
+                // TABLE STRUCTURE
+                // Columns: [Caption (weight 1.5)] [Manual CB (weight 0.5 or fixed)] [Field (weight 1.0)]
+                val labelColWeight = 1.3f
+                val cbColWeight = 0.7f
+                val fieldColWeight = 1.0f
+
+                // 1. Sun Declination Today
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Text("SUN DECLINATION", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                    Spacer(modifier = Modifier.weight(cbColWeight)) // No manual toggle for declination
+                    Text("${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold, modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp))
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }, horizontalArrangement = Arrangement.Start) {
-                    Checkbox(
-                        checked = useCompassForFullLocation,
-                        onCheckedChange = null,
-                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
-                    )
-                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
-                }
-                if (useCompassForFullLocation) {
-                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), textAlign = TextAlign.Start)
-                }
+                // 2. Sun Altitude
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("SUN ALTITUDE", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
 
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable(enabled = lockedData == null) {
+                        modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
                             isManualAltitude = !isManualAltitude
                             if (isManualAltitude && lockedData == null) {
                                 manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
@@ -1600,39 +1583,100 @@ fun SextantScreen(
                             checked = isManualAltitude,
                             onCheckedChange = null,
                             colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                            enabled = lockedData == null
+                            enabled = lockedData == null,
+                            modifier = Modifier.scale(0.8f)
                         )
-                        Text("Manual Altitude", color = foregroundColor, fontSize = 14.sp)
+                        Text("Man", color = foregroundColor, fontSize = 12.sp)
                     }
-
-                    Spacer(modifier = Modifier.width(16.dp))
 
                     if (!isManualAltitude && lockedData == null) {
                         manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
                     }
 
-                    OutlinedTextField(
-                        value = if (lockedData != null) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr,
-                        onValueChange = { manualAltitudeStr = it.replace(',', '.') },
-                        label = { Text("Sun Altitude (°)") },
-                        modifier = Modifier.weight(1f).padding(end = 16.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor),
-                        enabled = isManualAltitude && lockedData == null,
-                        singleLine = true
-                    )
-                }
-                Text("This is the measured vertical angle of the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp).fillMaxWidth())
+                    val isAltEditable = isManualAltitude && lockedData == null
+                    val altVal = if (lockedData != null) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr
 
+                    val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+
+                    Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isAltEditable) {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = altVal,
+                                onValueChange = { manualAltitudeStr = it.replace(',', '.') },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .border(1.dp, Color.Gray, textFieldShape)
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        } else {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = "${altVal}°",
+                                onValueChange = {},
+                                readOnly = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+                Text("This is the measured vertical angle of the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp).fillMaxWidth())
+
+                // 3. Hemisphere (if not using compass)
+                if (!useCompassForFullLocation) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                        Text("HEMISPHERE", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                        Spacer(modifier = Modifier.weight(cbColWeight))
+
+                        Row(modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp)) {
+                            Button(
+                                onClick = { onIsNorthernHemisphereChange(true) },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                            ) { Text("N") }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { onIsNorthernHemisphereChange(false) },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
+                                modifier = Modifier.height(36.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                            ) { Text("S") }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Toggle for Compass
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }, horizontalArrangement = Arrangement.Start) {
+                    Checkbox(
+                        checked = useCompassForFullLocation,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
+                    )
+                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
+                }
+                if (useCompassForFullLocation) {
+                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 12.dp), textAlign = TextAlign.Start)
+                }
+
+                // 4. Anti-Azimuth (if using compass)
                 if (useCompassForFullLocation) {
                     if (!isManualShadowAzimuth && lockedData == null) {
-                        // Auto-update string while manual is off and not locked
                         manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("ANTI-AZIMUTH", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable(enabled = lockedData == null) {
+                            modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
                                 isManualShadowAzimuth = !isManualShadowAzimuth
                                 if (isManualShadowAzimuth && lockedData == null) {
                                     manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
@@ -1643,24 +1687,44 @@ fun SextantScreen(
                                 checked = isManualShadowAzimuth,
                                 onCheckedChange = null,
                                 colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                                enabled = lockedData == null
+                                enabled = lockedData == null,
+                            modifier = Modifier.scale(0.8f)
                             )
-                            Text("Manual Anti-Azimuth", color = foregroundColor, fontSize = 14.sp)
+                            Text("Man", color = foregroundColor, fontSize = 12.sp)
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
+                        val isAziEditable = isManualShadowAzimuth && lockedData == null
+                        val aziVal = if (lockedData != null) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr
 
-                        OutlinedTextField(
-                            value = if (lockedData != null) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr,
-                            onValueChange = { manualShadowAzimuthStr = it.replace(',', '.') },
-                            label = { Text("Anti-Azimuth (°)") },
-                            modifier = Modifier.weight(1f).padding(end = 16.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor),
-                            enabled = isManualShadowAzimuth && lockedData == null,
-                            singleLine = true
-                        )
+                        val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+
+                        Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                            if (isAziEditable) {
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = aziVal,
+                                    onValueChange = { manualShadowAzimuthStr = it.replace(',', '.') },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                    .border(1.dp, Color.Gray, textFieldShape)
+                                        .padding(horizontal = 8.dp, vertical = 10.dp)
+                                )
+                            } else {
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = "${aziVal}°",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 8.dp, vertical = 10.dp)
+                                )
+                            }
+                        }
                     }
-                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp).fillMaxWidth())
+                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp).fillMaxWidth())
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
