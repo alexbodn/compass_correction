@@ -1509,6 +1509,12 @@ fun SextantScreen(
         var manualShadowAzimuthStr by remember { mutableStateOf("") }
         var isManualAltitude by remember { mutableStateOf(false) }
         var manualAltitudeStr by remember { mutableStateOf("") }
+        var isManualDeclination by remember { mutableStateOf(false) }
+        var manualDeclinationStr by remember { mutableStateOf("") }
+
+        val isAllManual = isManualAltitude && isManualDeclination && (!useCompassForFullLocation || isManualShadowAzimuth)
+        val isScreenFacingDown = kotlin.math.abs(liveRoll) > 90f
+        val isReadyToLock = (isHorizontal && isScreenFacingDown) || isAllManual
 
         // Retain last known horizontal values
         var lastHorizontalAzimuth by remember { mutableStateOf(0f) }
@@ -1544,31 +1550,85 @@ fun SextantScreen(
                 lastHorizontalAltitude
             }
 
-            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, sunData.declination, currentTimeMillis) else null
-            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
+            val effectiveDeclination = if (isManualDeclination && manualDeclinationStr.toFloatOrNull() != null) {
+                manualDeclinationStr.toFloat()
+            } else {
+                sunData.declination.toFloat()
+            }
 
-            val displayDeclination = lockedData?.declination ?: sunData.declination
+            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, effectiveDeclination.toDouble(), currentTimeMillis) else null
+            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, effectiveDeclination.toDouble(), sunData.hourAngle, isNorthernHemisphere) else null
 
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // TABLE STRUCTURE
-                // Columns: [Caption (weight 1.5)] [Manual CB (weight 0.5 or fixed)] [Field (weight 1.0)]
-                val labelColWeight = 1.3f
-                val cbColWeight = 0.7f
+                // Columns: [Caption (weight 1.0)] [Manual CB (weight 1.0 or fixed)] [Field (weight 1.0)]
+                val labelColWeight = 1.0f
+                val cbColWeight = 1.0f
                 val fieldColWeight = 1.0f
 
                 // 1. Sun Declination Today
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                    Text("SUN DECLINATION", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
-                    Spacer(modifier = Modifier.weight(cbColWeight)) // No manual toggle for declination
-                    Text("${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold, modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp))
+                    Text("Sun Declination", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
+                            isManualDeclination = !isManualDeclination
+                            if (isManualDeclination && lockedData == null) {
+                                manualDeclinationStr = String.format("%.2f", sunData.declination).replace(',', '.')
+                            }
+                        }
+                    ) {
+                        Checkbox(
+                            checked = isManualDeclination,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
+                            enabled = lockedData == null,
+                            modifier = Modifier.scale(0.8f)
+                        )
+                        Text("Manual", color = foregroundColor, fontSize = 12.sp)
+                    }
+
+                    if (!isManualDeclination && lockedData == null) {
+                        manualDeclinationStr = String.format("%.2f", sunData.declination).replace(',', '.')
+                    }
+
+                    val isDeclEditable = isManualDeclination && lockedData == null
+                    val declVal = if (lockedData != null) String.format("%.2f", lockedData.declination).replace(',', '.') else manualDeclinationStr
+                    val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+
+                    Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isDeclEditable) {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = declVal,
+                                onValueChange = { manualDeclinationStr = it.replace(',', '.') },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .border(1.dp, Color.Gray, textFieldShape)
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        } else {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = "${declVal}°",
+                                onValueChange = {},
+                                readOnly = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
                 }
 
                 // 2. Sun Altitude
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("SUN ALTITUDE", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                    Text("Sun Altitude", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1629,7 +1689,7 @@ fun SextantScreen(
                 // 3. Hemisphere (if not using compass)
                 if (!useCompassForFullLocation) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                        Text("HEMISPHERE", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                        Text("Hemisphere", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
                         Spacer(modifier = Modifier.weight(cbColWeight))
 
                         Row(modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp)) {
@@ -1672,7 +1732,7 @@ fun SextantScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text("ANTI-AZIMUTH", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                        Text("Anti-Azimuth", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1749,7 +1809,7 @@ fun SextantScreen(
                     }
                 }
 
-                if (isHorizontal || lockedData != null) {
+                if (isReadyToLock || lockedData != null) {
                     Button(
                         onClick = {
                             if (lockedData == null) {
@@ -1771,9 +1831,9 @@ fun SextantScreen(
                 } else {
                     Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "For measuring, please keep the phone horizontally.",
+                            text = "For measuring, please keep the phone horizontally, screen facing down.",
                             color = Color.Red,
-                            fontSize = 16.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
