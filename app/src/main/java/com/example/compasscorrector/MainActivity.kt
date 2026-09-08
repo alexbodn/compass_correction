@@ -1545,7 +1545,6 @@ fun SextantScreen(
             val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, sunData.declination, currentTimeMillis) else null
             val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
 
-            val displayAltitude = lockedData?.altitude ?: effectiveAltitude
             val displayDeclination = lockedData?.declination ?: sunData.declination
 
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1554,7 +1553,6 @@ fun SextantScreen(
 
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
                     Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                    Text("Measured Sun Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1584,6 +1582,10 @@ fun SextantScreen(
                     )
                     Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
                 }
+                if (useCompassForFullLocation) {
+                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), textAlign = TextAlign.Start)
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1612,17 +1614,16 @@ fun SextantScreen(
                     OutlinedTextField(
                         value = if (lockedData != null) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr,
                         onValueChange = { manualAltitudeStr = it.replace(',', '.') },
-                        label = { Text("Altitude (°)") },
+                        label = { Text("Sun Altitude (°)") },
                         modifier = Modifier.weight(1f).padding(end = 16.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor),
                         enabled = isManualAltitude && lockedData == null,
                         singleLine = true
                     )
                 }
+                Text("This is the measured vertical angle of the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp).fillMaxWidth())
 
                 if (useCompassForFullLocation) {
-                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), textAlign = TextAlign.Start)
-
                     if (!isManualShadowAzimuth && lockedData == null) {
                         // Auto-update string while manual is off and not locked
                         manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
@@ -1644,7 +1645,7 @@ fun SextantScreen(
                                 colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
                                 enabled = lockedData == null
                             )
-                            Text("Manual", color = foregroundColor, fontSize = 14.sp)
+                            Text("Manual Anti-Azimuth", color = foregroundColor, fontSize = 14.sp)
                         }
 
                         Spacer(modifier = Modifier.width(16.dp))
@@ -1659,7 +1660,7 @@ fun SextantScreen(
                             singleLine = true
                         )
                     }
-                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp))
+                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp).fillMaxWidth())
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
