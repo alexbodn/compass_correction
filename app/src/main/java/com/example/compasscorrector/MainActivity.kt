@@ -2101,19 +2101,7 @@ Press with the other hand the lock measurement button.""",
                     .requiredSize(width = boxWidth, height = boxHeight)
                     .padding(16.dp)
             ) {
-                if (isPortraitHeld) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "For measuring, please hold the phone horizontally.",
-                            color = Color.Red,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                } else {
-                    interactiveControlsData(Modifier.fillMaxSize())
-                }
+                interactiveControlsData(Modifier.fillMaxSize())
             }
         }
 
