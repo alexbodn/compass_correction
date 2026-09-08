@@ -1513,8 +1513,7 @@ fun SextantScreen(
         var manualDeclinationStr by remember { mutableStateOf("") }
 
         val isAllManual = isManualAltitude && isManualDeclination && (!useCompassForFullLocation || isManualShadowAzimuth)
-        val isScreenFacingDown = kotlin.math.abs(liveRoll) > 90f
-        val isReadyToLock = (isHorizontal && isScreenFacingDown) || isAllManual
+        val isReadyToLock = isHorizontal || isAllManual
 
         // Retain last known horizontal values
         var lastHorizontalAzimuth by remember { mutableStateOf(0f) }
@@ -1831,9 +1830,9 @@ fun SextantScreen(
                 } else {
                     Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "For measuring, please keep the phone horizontally, screen facing down.",
+                            text = "For measuring, please keep the phone horizontally.",
                             color = Color.Red,
-                            fontSize = 14.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
@@ -2087,11 +2086,17 @@ Press with the other hand the lock measurement button.""",
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            val isPortraitHeld = kotlin.math.abs(liveRoll) < 45f || kotlin.math.abs(liveRoll) > 135f
+            val rotZ = when {
+                liveRoll in -45f..45f -> 0f // Portrait
+                liveRoll in 45f..135f -> -90f // Reverse Landscape
+                liveRoll in -135f..-45f -> 90f // Landscape
+                else -> 180f // Reverse Portrait
+            }
+
+            val isPortraitHeld = rotZ == 0f || rotZ == 180f
 
             val boxWidth = if (isPortraitHeld) maxWidth else maxHeight
             val boxHeight = if (isPortraitHeld) maxHeight else maxWidth
-            val rotZ = if (isPortraitHeld) 0f else (if (isReverseLandscape) -90f else 90f)
 
             Box(
                 modifier = Modifier
