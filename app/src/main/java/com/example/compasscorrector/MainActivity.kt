@@ -1559,14 +1559,26 @@ fun SextantScreen(
             val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, effectiveDeclination.toDouble(), sunData.hourAngle, isNorthernHemisphere) else null
 
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
-                Spacer(modifier = Modifier.height(16.dp))
-
                 // TABLE STRUCTURE
                 // Columns: [Caption (weight 1.0)] [Manual CB (weight 1.0 or fixed)] [Field (weight 1.0)]
                 val labelColWeight = 1.0f
                 val cbColWeight = 1.0f
                 val fieldColWeight = 1.0f
+
+                // Toggle for Compass
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }, horizontalArrangement = Arrangement.Start) {
+                    Checkbox(
+                        checked = useCompassForFullLocation,
+                        onCheckedChange = null,
+                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
+                    )
+                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
+                }
+                if (useCompassForFullLocation) {
+                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 12.dp), textAlign = TextAlign.Start)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // 1. Sun Declination Today
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -1645,7 +1657,7 @@ fun SextantScreen(
                             enabled = lockedData == null,
                             modifier = Modifier.scale(0.8f)
                         )
-                        Text("Man", color = foregroundColor, fontSize = 12.sp)
+                        Text("Manual", color = foregroundColor, fontSize = 12.sp)
                     }
 
                     if (!isManualAltitude && lockedData == null) {
@@ -1709,21 +1721,6 @@ fun SextantScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Toggle for Compass
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }, horizontalArrangement = Arrangement.Start) {
-                    Checkbox(
-                        checked = useCompassForFullLocation,
-                        onCheckedChange = null,
-                        colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White)
-                    )
-                    Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
-                }
-                if (useCompassForFullLocation) {
-                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 12.dp), textAlign = TextAlign.Start)
-                }
-
                 // 4. Anti-Azimuth (if using compass)
                 if (useCompassForFullLocation) {
                     if (!isManualShadowAzimuth && lockedData == null) {
@@ -1749,7 +1746,7 @@ fun SextantScreen(
                                 enabled = lockedData == null,
                             modifier = Modifier.scale(0.8f)
                             )
-                            Text("Man", color = foregroundColor, fontSize = 12.sp)
+                            Text("Manual", color = foregroundColor, fontSize = 12.sp)
                         }
 
                         val isAziEditable = isManualShadowAzimuth && lockedData == null
@@ -2104,7 +2101,19 @@ Press with the other hand the lock measurement button.""",
                     .requiredSize(width = boxWidth, height = boxHeight)
                     .padding(16.dp)
             ) {
-                interactiveControlsData(Modifier.fillMaxSize())
+                if (isPortraitHeld) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "For measuring, please hold the phone horizontally.",
+                            color = Color.Red,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    interactiveControlsData(Modifier.fillMaxSize())
+                }
             }
         }
 
