@@ -1513,7 +1513,8 @@ fun SextantScreen(
         var manualDeclinationStr by remember { mutableStateOf("") }
 
         val isAllManual = isManualAltitude && isManualDeclination && (!useCompassForFullLocation || isManualShadowAzimuth)
-        val isReadyToLock = isHorizontal || isAllManual
+        val isScreenFacingDown = kotlin.math.abs(liveRoll) > 90f
+        val isReadyToLock = (isHorizontal && isScreenFacingDown) || isAllManual
 
         // Retain last known horizontal values
         var lastHorizontalAzimuth by remember { mutableStateOf(0f) }
@@ -1827,9 +1828,9 @@ fun SextantScreen(
                 } else {
                     Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "For measuring, please keep the phone horizontally.",
+                            text = "For measuring, please keep the phone horizontally, screen facing down.",
                             color = Color.Red,
-                            fontSize = 16.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
