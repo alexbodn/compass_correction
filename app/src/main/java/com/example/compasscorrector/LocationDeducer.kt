@@ -48,7 +48,8 @@ object LocationDeducer {
         altitudeDegrees: Float,
         azimuthDegrees: Float,
         declinationDegrees: Double,
-        currentTimeMillis: Long
+        currentTimeMillis: Long,
+        isNorthernHemisphere: Boolean
     ): Pair<Double, Double>? {
         val altRad = Math.toRadians(altitudeDegrees.toDouble())
         val decRad = Math.toRadians(declinationDegrees)
@@ -85,9 +86,13 @@ object LocationDeducer {
 
         if (validLats.isEmpty()) return null
 
-        // Use the first valid latitude. In most cases, these formulas yield one valid real-world latitude.
-        // If there are two, we pick the most reasonable one (or just the first, as spherical trig usually filters it tightly here).
-        val deducedLat = validLats[0]
+        val deducedLat = if (validLats.size == 1) {
+            validLats[0]
+        } else {
+            val northSol = validLats.maxOrNull()!!
+            val southSol = validLats.minOrNull()!!
+            if (isNorthernHemisphere) northSol else southSol
+        }
 
         // Solve for Hour Angle
         val latRad = Math.toRadians(deducedLat)

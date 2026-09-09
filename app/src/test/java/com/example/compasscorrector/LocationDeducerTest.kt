@@ -17,7 +17,7 @@ class LocationDeducerTest {
         // At exactly noon UTC, if azimuth is 180, we must be South of the sun (so Northern Hemisphere).
         // Let's pass that to test. Wait, the deducer returns the mathematical array index 0.
         // Let's just verify it returns *some* valid coordinate set successfully.
-        val result = LocationDeducer.deduceFullLocation(40f, 180f, 0.0, timeMillis)
+        val result = LocationDeducer.deduceFullLocation(40f, 180f, 0.0, timeMillis, true)
 
         assertNotNull(result)
         // One of the solutions is ~ -50 or +50 latitude, and Longitude is ~ 1.8 (due to Equation of Time).

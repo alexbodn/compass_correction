@@ -1513,8 +1513,8 @@ fun SextantScreen(
         var manualDeclinationStr by remember { mutableStateOf("") }
 
         val isAllManual = isManualAltitude && isManualDeclination && (!useCompassForFullLocation || isManualShadowAzimuth)
-        val isScreenFacingDown = kotlin.math.abs(liveRoll) > 90f
-        val isReadyToLock = (isHorizontal && isScreenFacingDown) || isAllManual
+        val isValidRoll = kotlin.math.abs(liveRoll) > 90f
+        val isReadyToLock = (isHorizontal && isValidRoll) || isAllManual
 
         // Retain last known horizontal values
         var lastHorizontalAzimuth by remember { mutableStateOf(0f) }
@@ -1556,7 +1556,7 @@ fun SextantScreen(
                 sunData.declination.toFloat()
             }
 
-            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, effectiveDeclination.toDouble(), currentTimeMillis) else null
+            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, effectiveDeclination.toDouble(), currentTimeMillis, isNorthernHemisphere) else null
             val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, effectiveDeclination.toDouble(), sunData.hourAngle, isNorthernHemisphere) else null
 
             Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1698,27 +1698,25 @@ fun SextantScreen(
                 }
                 Text("This is the measured vertical angle of the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp).fillMaxWidth())
 
-                // 3. Hemisphere (if not using compass)
-                if (!useCompassForFullLocation) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                        Text("Hemisphere", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
-                        Spacer(modifier = Modifier.weight(cbColWeight))
+                // 3. Hemisphere (Always visible)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                    Text("Hemisphere", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                    Spacer(modifier = Modifier.weight(cbColWeight))
 
-                        Row(modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp)) {
-                            Button(
-                                onClick = { onIsNorthernHemisphereChange(true) },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
-                                modifier = Modifier.height(36.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                            ) { Text("N") }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Button(
-                                onClick = { onIsNorthernHemisphereChange(false) },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
-                                modifier = Modifier.height(36.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                            ) { Text("S") }
-                        }
+                    Row(modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp)) {
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) { Text("N") }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(false) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) { Text("S") }
                     }
                 }
 
@@ -1806,7 +1804,7 @@ fun SextantScreen(
                     }
                 }
 
-                if (isReadyToLock || lockedData != null) {
+                if (isReadyToLock) {
                     Button(
                         onClick = {
                             if (lockedData == null) {
@@ -1828,7 +1826,7 @@ fun SextantScreen(
                 } else {
                     Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "For measuring, please keep the phone horizontally, screen facing down.",
+                            text = "For measuring, please keep the phone's long edge horizontal.",
                             color = Color.Red,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
@@ -2097,12 +2095,17 @@ Press with the other hand the lock measurement button.""",
             val boxHeight = if (isPortraitHeld) maxHeight else maxWidth
 
             Box(
-                modifier = Modifier
-                    .graphicsLayer { rotationZ = rotZ }
-                    .requiredSize(width = boxWidth, height = boxHeight)
-                    .padding(16.dp)
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize()
             ) {
-                interactiveControlsData(Modifier.fillMaxSize())
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer { rotationZ = rotZ }
+                        .requiredSize(width = boxWidth, height = boxHeight)
+                        .padding(16.dp)
+                ) {
+                    interactiveControlsData(Modifier.fillMaxSize())
+                }
             }
         }
 
