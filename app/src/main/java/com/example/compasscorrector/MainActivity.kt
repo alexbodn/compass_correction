@@ -180,6 +180,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var useCompassForFullLocation by remember { mutableStateOf(false) }
     var livePitch by remember { mutableStateOf(0f) }
     var liveRoll by remember { mutableStateOf(0f) }
+    var liveGravityAngle by remember { mutableStateOf(0f) }
     var magneticAccuracy by remember { mutableStateOf(0) }
     var magneticFieldStrength by remember { mutableStateOf(0f) }
 
@@ -198,6 +199,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             livePitch = pitch
             liveRoll = roll
         }
+        sensorHelper.onGravityAngleChanged = { angle ->
+            liveGravityAngle = angle
+        }
         sensorHelper.onMagneticAccuracyChanged = { acc ->
             magneticAccuracy = acc
         }
@@ -207,6 +211,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         onDispose {
             sensorHelper.onAzimuthChanged = null
             sensorHelper.onInclinationChanged = null
+            sensorHelper.onGravityAngleChanged = null
         }
     }
 
@@ -593,6 +598,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         },
                         livePitch = livePitch,
                         liveRoll = liveRoll,
+                        liveGravityAngle = liveGravityAngle,
                         lockedData = sextantLockedData,
                         onLockedDataChange = { sextantLockedData = it },
                         useCompassForFullLocation = useCompassForFullLocation,
@@ -1492,6 +1498,7 @@ fun SextantScreen(
     onIsNorthernHemisphereChange: (Boolean) -> Unit,
     livePitch: Float,
     liveRoll: Float,
+    liveGravityAngle: Float,
     lockedData: SextantLockedData?,
     onLockedDataChange: (SextantLockedData?) -> Unit,
     useCompassForFullLocation: Boolean,
@@ -2082,14 +2089,17 @@ Press with the other hand the lock measurement button.""",
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
+            // liveGravityAngle is mapped such that portrait is ~ -90
+            val normalizedGravityAngle = (liveGravityAngle + 360f) % 360f
+
             val rotZ = when {
-                liveRoll in -45f..45f -> 0f // Portrait
-                liveRoll in 45f..135f -> -90f // Reverse Landscape
-                liveRoll in -135f..-45f -> 90f // Landscape
-                else -> 180f // Reverse Portrait
+                normalizedGravityAngle in 225f..315f -> 0f // Portrait (Upright)
+                normalizedGravityAngle in 45f..135f -> 0f // Reverse Portrait (Upside down, bottom of text faces port)
+                normalizedGravityAngle in 315f..360f || normalizedGravityAngle in 0f..45f -> 90f // Landscape
+                else -> -90f // Reverse Landscape
             }
 
-            val isPortraitHeld = rotZ == 0f || rotZ == 180f
+            val isPortraitHeld = rotZ == 0f
 
             val boxWidth = if (isPortraitHeld) maxWidth else maxHeight
             val boxHeight = if (isPortraitHeld) maxHeight else maxWidth
