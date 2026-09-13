@@ -2232,10 +2232,25 @@ fun WatchStudyScreen(
         ) {
             Text("Source: ", color = foregroundColor, fontSize = 14.sp)
             val sources = listOf("GNSS", "Network", "Sextant", "Timezone", "Manual")
+
+            val isMocked = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                locationStatus is LocationStatus.Valid && locationStatus.location.isMock
+            } else {
+                locationStatus is LocationStatus.Valid && locationStatus.location.isFromMockProvider
+            }
+            val isSpoofed = isMocked || TestLocationConfig.gnssSpoofEnabled || TestLocationConfig.networkSpoofEnabled
+
             sources.forEach { source ->
+                val isEnabled = when (source) {
+                    "GNSS" -> locationStatus is LocationStatus.Valid && (locationStatus.source == "GPS" || locationStatus.source == "Generic") && !isSpoofed
+                    "Network" -> locationStatus is LocationStatus.Valid && locationStatus.source == "Network" && !isSpoofed
+                    "Sextant" -> sextantLockedData?.deducedLatitude != null
+                    else -> true
+                }
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
+                    modifier = Modifier.clickable(enabled = isEnabled) {
                         latSource = source
                         when (source) {
                             "GNSS" -> {
@@ -2262,10 +2277,16 @@ fun WatchStudyScreen(
                     RadioButton(
                         selected = latSource == source,
                         onClick = null,
-                        colors = RadioButtonDefaults.colors(selectedColor = Color.Blue, unselectedColor = foregroundColor),
+                        enabled = isEnabled,
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color.Blue,
+                            unselectedColor = foregroundColor,
+                            disabledSelectedColor = Color.Gray,
+                            disabledUnselectedColor = Color.Gray
+                        ),
                         modifier = Modifier.scale(0.8f)
                     )
-                    Text(source, color = foregroundColor, fontSize = 12.sp)
+                    Text(source, color = if (isEnabled) foregroundColor else Color.Gray, fontSize = 12.sp)
                 }
             }
         }
@@ -2297,13 +2318,40 @@ fun WatchStudyScreen(
                 // Draw Base Watch Dial (Outer circle)
                 drawCircle(color = foregroundColor, radius = radius * 0.95f, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
 
-                // Draw outer hyphen track
+                val currentCal = java.util.Calendar.getInstance()
+                currentCal.timeInMillis = currentTimeMillis
+                val currentHour = currentCal.get(java.util.Calendar.HOUR_OF_DAY)
+                val currentMinute = currentCal.get(java.util.Calendar.MINUTE)
+                val currentSecond = currentCal.get(java.util.Calendar.SECOND)
+                val currentDecimalHour = currentHour + currentMinute / 60.0 + currentSecond / 3600.0
+
+                // Calculate rotation to place EXACT current time at the top (-90 deg)
+                val latRadCurrent = Math.toRadians(selectedParallel.toDouble() * if (isNorthernHemisphere) 1.0 else -1.0)
+                val decRadCurrent = Math.toRadians(declination)
+                val haRadCurrent = Math.toRadians((currentDecimalHour - 12) * 15.0)
+
+                val sinAltCurrent = kotlin.math.sin(latRadCurrent) * kotlin.math.sin(decRadCurrent) + kotlin.math.cos(latRadCurrent) * kotlin.math.cos(decRadCurrent) * kotlin.math.cos(haRadCurrent)
+                val altRadCurrent = kotlin.math.asin(sinAltCurrent)
+
+                val cosAzCurrent = (kotlin.math.sin(decRadCurrent) - kotlin.math.sin(latRadCurrent) * kotlin.math.sin(altRadCurrent)) / (kotlin.math.cos(latRadCurrent) * kotlin.math.cos(altRadCurrent))
+                var currentTrueAzimuth = Math.toDegrees(kotlin.math.acos(cosAzCurrent.coerceIn(-1.0, 1.0)))
+                if (currentDecimalHour > 12) currentTrueAzimuth = 360.0 - currentTrueAzimuth
+
+                val currentHourCanvasAngle = if (isNorthernHemisphere) currentTrueAzimuth - 270.0 else currentTrueAzimuth - 90.0
+                val rotationOffset = -90.0 - currentHourCanvasAngle
+
+                // Draw outer hyphen track (aligned with True North using rotationOffset)
                 val outerTrackInnerRadius = radius * 0.95f
                 val outerTrackOuterRadius = radius
                 drawCircle(color = foregroundColor, radius = outerTrackOuterRadius, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
 
+                val northAzimuth = 0.0
+                val northBaseCanvasAngle = if (isNorthernHemisphere) northAzimuth - 270.0 else northAzimuth - 90.0
+                val northRotatedCanvasAngle = northBaseCanvasAngle + rotationOffset
+
                 for (deg in 0 until 360 step 5) {
-                    val degRad = Math.toRadians(deg.toDouble())
+                    val degRotated = (northRotatedCanvasAngle + deg) % 360.0
+                    val degRad = Math.toRadians(degRotated)
                     val startX = cx + outerTrackInnerRadius * kotlin.math.cos(degRad).toFloat()
                     val startY = cy + outerTrackInnerRadius * kotlin.math.sin(degRad).toFloat()
                     val endX = cx + outerTrackOuterRadius * kotlin.math.cos(degRad).toFloat()
@@ -2313,10 +2361,6 @@ fun WatchStudyScreen(
                     drawLine(color = foregroundColor, start = Offset(startX, startY), end = Offset(endX, endY), strokeWidth = strokeWidth)
                 }
 
-                val currentCal = java.util.Calendar.getInstance()
-                currentCal.timeInMillis = currentTimeMillis
-                val currentHour = currentCal.get(java.util.Calendar.HOUR_OF_DAY)
-
                 // Text Paint
                 val trueTextPaint = android.graphics.Paint().apply {
                     color = if (foregroundColor == Color.White) android.graphics.Color.CYAN else android.graphics.Color.BLUE
@@ -2324,27 +2368,6 @@ fun WatchStudyScreen(
                     textAlign = android.graphics.Paint.Align.CENTER
                     isFakeBoldText = true
                 }
-                val currentHourTextPaint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.RED
-                    textSize = 36f
-                    textAlign = android.graphics.Paint.Align.CENTER
-                    isFakeBoldText = true
-                }
-
-                // Calculate rotation to place current hour at the top (-90 deg)
-                val latRadCurrent = Math.toRadians(selectedParallel.toDouble() * if (isNorthernHemisphere) 1.0 else -1.0)
-                val decRadCurrent = Math.toRadians(declination)
-                val haRadCurrent = Math.toRadians((currentHour - 12) * 15.0)
-
-                val sinAltCurrent = kotlin.math.sin(latRadCurrent) * kotlin.math.sin(decRadCurrent) + kotlin.math.cos(latRadCurrent) * kotlin.math.cos(decRadCurrent) * kotlin.math.cos(haRadCurrent)
-                val altRadCurrent = kotlin.math.asin(sinAltCurrent)
-
-                val cosAzCurrent = (kotlin.math.sin(decRadCurrent) - kotlin.math.sin(latRadCurrent) * kotlin.math.sin(altRadCurrent)) / (kotlin.math.cos(latRadCurrent) * kotlin.math.cos(altRadCurrent))
-                var currentTrueAzimuth = Math.toDegrees(kotlin.math.acos(cosAzCurrent.coerceIn(-1.0, 1.0)))
-                if (currentHour > 12) currentTrueAzimuth = 360.0 - currentTrueAzimuth
-
-                val currentHourCanvasAngle = if (isNorthernHemisphere) currentTrueAzimuth - 270.0 else currentTrueAzimuth - 90.0
-                val rotationOffset = -90.0 - currentHourCanvasAngle
 
                 // Draw True Sun Azimuth "Soft" Dial
                 // From 0 to 23 hours
@@ -2387,10 +2410,9 @@ fun WatchStudyScreen(
                     val tickOuterY = cy + (radius * 0.95f) * kotlin.math.sin(sunRad).toFloat()
                     val tickInnerX = cx + (radius * 0.85f) * kotlin.math.cos(sunRad).toFloat()
                     val tickInnerY = cy + (radius * 0.85f) * kotlin.math.sin(sunRad).toFloat()
-                    drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = if (hour == currentHour) 4f else 2f)
+                    drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = 2f)
 
-                    val paintToUseForTrue = if (hour == currentHour) currentHourTextPaint else trueTextPaint
-                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, paintToUseForTrue)
+                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, trueTextPaint)
                 }
 
                 // Draw Sun Icon at Top (-90 degrees)
@@ -2410,9 +2432,6 @@ fun WatchStudyScreen(
                 }
 
                 // Draw True North Arrow
-                val northAzimuth = 0.0
-                val northBaseCanvasAngle = if (isNorthernHemisphere) northAzimuth - 270.0 else northAzimuth - 90.0
-                val northRotatedCanvasAngle = northBaseCanvasAngle + rotationOffset
                 val northRad = Math.toRadians(northRotatedCanvasAngle)
                 val arrowColor = foregroundColor // Now foreground color instead of Yellow
 
@@ -2561,7 +2580,7 @@ fun WatchStudyScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "Point the current hour (red) towards the Sun. The white arrow shows True North, calculated exactly using today's declination and the selected latitude.",
+            "Point the exact current time marker at the top towards the Sun. The arrow matching your theme color shows True North, calculated exactly using today's declination and the selected latitude.",
             color = foregroundColor,
             fontSize = 12.sp,
             lineHeight = 16.sp,
