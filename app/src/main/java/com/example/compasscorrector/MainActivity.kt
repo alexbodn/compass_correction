@@ -1490,6 +1490,15 @@ fun SettingsScreen(
     }
 }
 
+fun formatCoordinate(value: Float, isLatitude: Boolean): String {
+    val suffix = if (isLatitude) {
+        if (value >= 0) "N" else "S"
+    } else {
+        if (value >= 0) "E" else "W"
+    }
+    return String.format("%.2f°%s", kotlin.math.abs(value), suffix)
+}
+
 @Composable
 fun SextantScreen(
     foregroundColor: Color,
@@ -1568,8 +1577,10 @@ fun SextantScreen(
 
             // Make scrollable
             val scrollState = androidx.compose.foundation.rememberScrollState()
+            Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
             Column(
-                modifier = modifier
+                modifier = Modifier
+                    .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1793,11 +1804,13 @@ fun SextantScreen(
                             }
                         }
                     }
-                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp).fillMaxWidth())
+                    Text("This is the direction your shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp).fillMaxWidth())
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+            } // End of scrollable Column
 
+            // Pinned Bottom Section
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (lockedData != null) {
                     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.Start) {
                         val context = LocalContext.current
@@ -1809,7 +1822,7 @@ fun SextantScreen(
                                     context.startActivity(shareIntent)
                                 }) {
                                     Text("Measured location: ", color = foregroundColor)
-                                    Text("${String.format("%.2f°", lockedData.deducedLatitude)}, ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+                                    Text("${formatCoordinate(lockedData.deducedLatitude!!, true)}, ${formatCoordinate(lockedData.assumedOrDeducedLongitude!!, false)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
                                 }
                             } else {
                                 Text("Could not solve spherical math for this attitude.", color = Color.Red)
@@ -1822,7 +1835,7 @@ fun SextantScreen(
                                     context.startActivity(shareIntent)
                                 }) {
                                     Text("Measured location: ", color = foregroundColor)
-                                    Text("${String.format("%.2f°", lockedData.deducedLatitude)}, ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+                                    Text("${formatCoordinate(lockedData.deducedLatitude!!, true)}, ${formatCoordinate(lockedData.assumedOrDeducedLongitude!!, false)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
                                     Text(" (approx. lon)", color = Color.Red, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp).align(Alignment.Bottom))
                                 }
                             } else {
@@ -1872,6 +1885,7 @@ fun SextantScreen(
                         )
                     }
                 }
+            }
             }
         }
 
@@ -2132,8 +2146,8 @@ Press with the other hand the lock measurement button.""",
 
             val isPortraitHeld = rotZ == -90f || rotZ == 90f
 
-            val boxWidth = if (isPortraitHeld) maxWidth else maxHeight
-            val boxHeight = if (isPortraitHeld) maxHeight else maxWidth
+            val boxWidth = if (isPortraitHeld) maxHeight else maxWidth
+            val boxHeight = if (isPortraitHeld) maxWidth else maxHeight
 
             Box(
                 contentAlignment = Alignment.Center,
@@ -2142,7 +2156,7 @@ Press with the other hand the lock measurement button.""",
                 Box(
                     modifier = Modifier
                         .graphicsLayer { rotationZ = rotZ }
-                        .requiredSize(width = boxWidth * 0.85f, height = boxHeight * 0.85f)
+                        .requiredSize(width = boxWidth, height = boxHeight)
                         .padding(16.dp)
                 ) {
                     interactiveControlsData(Modifier.fillMaxSize())
