@@ -24,6 +24,7 @@ class SensorHelper(context: Context) : SensorEventListener {
 
     var onAzimuthChanged: ((Float) -> Unit)? = null
     var onInclinationChanged: ((pitch: Float, roll: Float) -> Unit)? = null
+    var onGravityAngleChanged: ((Float) -> Unit)? = null
     var onMagneticAccuracyChanged: ((Int) -> Unit)? = null
     var onMagneticFieldStrengthChanged: ((Float) -> Unit)? = null
 
@@ -46,6 +47,13 @@ class SensorHelper(context: Context) : SensorEventListener {
         if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             System.arraycopy(event.values, 0, lastAccelerometer, 0, event.values.size)
             lastAccelerometerSet = true
+
+            // Calculate screen rotation angle directly from gravity vector components on the XY plane
+            val gx = event.values[0]
+            val gy = event.values[1]
+            // Calculate angle in degrees, mapping to 0 for upright, 90 for landscape, etc.
+            val gravityAngle = Math.toDegrees(kotlin.math.atan2(gx.toDouble(), gy.toDouble())).toFloat()
+            onGravityAngleChanged?.invoke(gravityAngle)
         } else if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
             System.arraycopy(event.values, 0, lastMagnetometer, 0, event.values.size)
             lastMagnetometerSet = true

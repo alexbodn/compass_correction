@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Menu
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.border
 import com.example.compasscorrector.ui.DiagnosticsScreen
 import com.example.compasscorrector.ui.SpoofScreen
 
@@ -178,6 +180,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
     var useCompassForFullLocation by remember { mutableStateOf(false) }
     var livePitch by remember { mutableStateOf(0f) }
     var liveRoll by remember { mutableStateOf(0f) }
+    var liveGravityAngle by remember { mutableStateOf(0f) }
     var magneticAccuracy by remember { mutableStateOf(0) }
     var magneticFieldStrength by remember { mutableStateOf(0f) }
 
@@ -196,6 +199,9 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
             livePitch = pitch
             liveRoll = roll
         }
+        sensorHelper.onGravityAngleChanged = { angle ->
+            liveGravityAngle = angle
+        }
         sensorHelper.onMagneticAccuracyChanged = { acc ->
             magneticAccuracy = acc
         }
@@ -205,6 +211,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         onDispose {
             sensorHelper.onAzimuthChanged = null
             sensorHelper.onInclinationChanged = null
+            sensorHelper.onGravityAngleChanged = null
         }
     }
 
@@ -591,6 +598,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                         },
                         livePitch = livePitch,
                         liveRoll = liveRoll,
+                        liveGravityAngle = liveGravityAngle,
                         lockedData = sextantLockedData,
                         onLockedDataChange = { sextantLockedData = it },
                         useCompassForFullLocation = useCompassForFullLocation,
@@ -1482,6 +1490,15 @@ fun SettingsScreen(
     }
 }
 
+fun formatCoordinate(value: Float, isLatitude: Boolean): String {
+    val suffix = if (isLatitude) {
+        if (value >= 0) "N" else "S"
+    } else {
+        if (value >= 0) "E" else "W"
+    }
+    return String.format("%.2f°%s", kotlin.math.abs(value), suffix)
+}
+
 @Composable
 fun SextantScreen(
     foregroundColor: Color,
@@ -1490,6 +1507,7 @@ fun SextantScreen(
     onIsNorthernHemisphereChange: (Boolean) -> Unit,
     livePitch: Float,
     liveRoll: Float,
+    liveGravityAngle: Float,
     lockedData: SextantLockedData?,
     onLockedDataChange: (SextantLockedData?) -> Unit,
     useCompassForFullLocation: Boolean,
@@ -1501,13 +1519,25 @@ fun SextantScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         val sunData = CelestialMathUtils.calculateSunPositionData(currentTimeMillis)
         val (liveAlt, _, isReverseLandscape) = InclinationHelper.calculateAltitudeAndOrientation(livePitch, liveRoll)
-
+        val isHorizontal = kotlin.math.abs(livePitch) <= 10f
 
         var isManualShadowAzimuth by remember { mutableStateOf(false) }
         var manualShadowAzimuthStr by remember { mutableStateOf("") }
+        var isManualAltitude by remember { mutableStateOf(false) }
+        var manualAltitudeStr by remember { mutableStateOf("") }
+        var isManualDeclination by remember { mutableStateOf(false) }
+        var manualDeclinationStr by remember { mutableStateOf("") }
 
-        val interactiveControlsData = @Composable { modifier: Modifier ->
-            // Pre-calculate live values
+        val isAllManual = isManualAltitude && isManualDeclination && (!useCompassForFullLocation || isManualShadowAzimuth)
+        val isValidRoll = kotlin.math.abs(liveRoll) > 90f
+        val isReadyToLock = (isHorizontal && isValidRoll) || isAllManual
+
+        // Retain last known horizontal values
+        var lastHorizontalAzimuth by remember { mutableStateOf(0f) }
+        var lastHorizontalAltitude by remember { mutableStateOf(0f) }
+
+        // Update retained values only when horizontal
+        if (isHorizontal) {
             var liveTrueAzimuth = magneticAzimuth
             if (useTrueNorth && location != null) {
                 val declination = SensorHelper.getDeclination(location.latitude, location.longitude, location.altitude, currentTimeMillis)
@@ -1518,46 +1548,50 @@ fun SextantScreen(
             } else {
                 (liveTrueAzimuth - 90f + 360f) % 360f
             }
-            val shadowAzimuth = (liveSunAzimuth + 180f) % 360f
+            lastHorizontalAzimuth = liveSunAzimuth
+            lastHorizontalAltitude = liveAlt
+        }
+
+        val interactiveControlsData = @Composable { modifier: Modifier ->
+            // Pre-calculate live values
+            val shadowAzimuth = (lastHorizontalAzimuth + 180f) % 360f
             val effectiveSunAzimuth = if (isManualShadowAzimuth && manualShadowAzimuthStr.toFloatOrNull() != null) {
                 (manualShadowAzimuthStr.toFloat() + 180f) % 360f
             } else {
-                liveSunAzimuth
+                lastHorizontalAzimuth
             }
-            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(liveAlt, effectiveSunAzimuth, sunData.declination, currentTimeMillis) else null
-            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(liveAlt, sunData.declination, sunData.hourAngle, isNorthernHemisphere) else null
+            val effectiveAltitude = if (isManualAltitude && manualAltitudeStr.toFloatOrNull() != null) {
+                manualAltitudeStr.toFloat()
+            } else {
+                lastHorizontalAltitude
+            }
 
-            val displayAltitude = lockedData?.altitude ?: liveAlt
-            val displayDeclination = lockedData?.declination ?: sunData.declination
+            val effectiveDeclination = if (isManualDeclination && manualDeclinationStr.toFloatOrNull() != null) {
+                manualDeclinationStr.toFloat()
+            } else {
+                sunData.declination.toFloat()
+            }
 
-            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Phone Sextant Tool", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
-                Spacer(modifier = Modifier.height(8.dp))
+            val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, effectiveDeclination.toDouble(), currentTimeMillis, isNorthernHemisphere) else null
+            val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, effectiveDeclination.toDouble(), sunData.hourAngle, isNorthernHemisphere) else null
 
-                Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-                    Text("Measured Altitude: ${String.format("%.0f°", displayAltitude)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                    Text("Sun Declination Today: ${String.format("%.2f°", displayDeclination)}", color = foregroundColor, fontWeight = FontWeight.Bold)
-                }
+            // Make scrollable
+            val scrollState = androidx.compose.foundation.rememberScrollState()
+            Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // TABLE STRUCTURE
+                // Columns: [Caption (weight 1.0)] [Manual CB (weight 1.0 or fixed)] [Field (weight 1.0)]
+                val labelColWeight = 1.0f
+                val cbColWeight = 1.0f
+                val fieldColWeight = 1.0f
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (!useCompassForFullLocation) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-                        Text("Hemisphere: ", color = foregroundColor, fontSize = 16.sp)
-                        Button(
-                            onClick = { onIsNorthernHemisphereChange(true) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("N") }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = { onIsNorthernHemisphereChange(false) },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
-                            modifier = Modifier.height(36.dp)
-                        ) { Text("S") }
-                    }
-                }
-
+                // Toggle for Compass
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { onUseCompassForFullLocationChange(!useCompassForFullLocation) }, horizontalArrangement = Arrangement.Start) {
                     Checkbox(
                         checked = useCompassForFullLocation,
@@ -1567,24 +1601,162 @@ fun SextantScreen(
                     Text("Use compass direction to deduce full Lat & Lon", color = foregroundColor, fontSize = 14.sp)
                 }
                 if (useCompassForFullLocation) {
-                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 8.dp), textAlign = TextAlign.Start)
+                    Text("Warning: Check compass accuracy on the sun page.", color = Color.Red, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 12.dp), textAlign = TextAlign.Start)
+                }
 
-                    // Use locked shadow azimuth if data is locked, otherwise use the live/manual logic
-                    val displayShadowAzimuth = lockedData?.lockedShadowAzimuth ?: if (isManualShadowAzimuth) {
-                        manualShadowAzimuthStr.toFloatOrNull() ?: shadowAzimuth
-                    } else {
-                        shadowAzimuth
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 1. Sun Declination Today
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Text("Sun Declination", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
+                            isManualDeclination = !isManualDeclination
+                            if (isManualDeclination && lockedData == null) {
+                                manualDeclinationStr = String.format("%.2f", sunData.declination).replace(',', '.')
+                            }
+                        }
+                    ) {
+                        Checkbox(
+                            checked = isManualDeclination,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
+                            enabled = lockedData == null,
+                            modifier = Modifier.scale(0.8f)
+                        )
+                        Text("Manual", color = foregroundColor, fontSize = 12.sp)
                     }
 
+                    if (!isManualDeclination && lockedData == null) {
+                        manualDeclinationStr = String.format("%.2f", sunData.declination).replace(',', '.')
+                    }
+
+                    val isDeclEditable = isManualDeclination && lockedData == null
+                    val declVal = if (lockedData != null) String.format("%.2f", lockedData.declination).replace(',', '.') else manualDeclinationStr
+                    val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+
+                    Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isDeclEditable) {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = declVal,
+                                onValueChange = { manualDeclinationStr = it.replace(',', '.') },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .border(1.dp, Color.Gray, textFieldShape)
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        } else {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = "${declVal}°",
+                                onValueChange = {},
+                                readOnly = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+
+                // 2. Sun Altitude
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sun Altitude", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
+                            isManualAltitude = !isManualAltitude
+                            if (isManualAltitude && lockedData == null) {
+                                manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
+                            }
+                        }
+                    ) {
+                        Checkbox(
+                            checked = isManualAltitude,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
+                            enabled = lockedData == null,
+                            modifier = Modifier.scale(0.8f)
+                        )
+                        Text("Manual", color = foregroundColor, fontSize = 12.sp)
+                    }
+
+                    if (!isManualAltitude && lockedData == null) {
+                        manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
+                    }
+
+                    val isAltEditable = isManualAltitude && lockedData == null
+                    val altVal = if (lockedData != null) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr
+
+                    val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+
+                    Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isAltEditable) {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = altVal,
+                                onValueChange = { manualAltitudeStr = it.replace(',', '.') },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .border(1.dp, Color.Gray, textFieldShape)
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        } else {
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = "${altVal}°",
+                                onValueChange = {},
+                                readOnly = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+                Text("This is the measured vertical angle of the Sun.", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 12.dp).fillMaxWidth())
+
+                // 3. Hemisphere (Always visible)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                    Text("Hemisphere", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+                    Spacer(modifier = Modifier.weight(cbColWeight))
+
+                    Row(modifier = Modifier.weight(fieldColWeight).padding(start = 8.dp)) {
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(true) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) { Text("N") }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Button(
+                            onClick = { onIsNorthernHemisphereChange(false) },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (!isNorthernHemisphere) Color.Blue else Color.Gray),
+                            modifier = Modifier.height(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        ) { Text("S") }
+                    }
+                }
+
+                // 4. Anti-Azimuth (if using compass)
+                if (useCompassForFullLocation) {
                     if (!isManualShadowAzimuth && lockedData == null) {
-                        // Auto-update string while manual is off and not locked
                         manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Anti-Azimuth", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
+
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.clickable(enabled = lockedData == null) {
+                            modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
                                 isManualShadowAzimuth = !isManualShadowAzimuth
                                 if (isManualShadowAzimuth && lockedData == null) {
                                     manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
@@ -1595,66 +1767,125 @@ fun SextantScreen(
                                 checked = isManualShadowAzimuth,
                                 onCheckedChange = null,
                                 colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                                enabled = lockedData == null
+                                enabled = lockedData == null,
+                            modifier = Modifier.scale(0.8f)
                             )
-                            Text("Manual", color = foregroundColor, fontSize = 14.sp)
+                            Text("Manual", color = foregroundColor, fontSize = 12.sp)
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
+                        val isAziEditable = isManualShadowAzimuth && lockedData == null
+                        val aziVal = if (lockedData != null) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr
 
-                        OutlinedTextField(
-                            value = if (lockedData != null) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr,
-                            onValueChange = { manualShadowAzimuthStr = it.replace(',', '.') },
-                            label = { Text("Anti-Azimuth (°)") },
-                            modifier = Modifier.weight(1f).padding(end = 16.dp),
-                            textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor),
-                            enabled = isManualShadowAzimuth && lockedData == null,
-                            singleLine = true
-                        )
+                        val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+
+                        Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
+                            if (isAziEditable) {
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = aziVal,
+                                    onValueChange = { manualShadowAzimuthStr = it.replace(',', '.') },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                    .border(1.dp, Color.Gray, textFieldShape)
+                                        .padding(horizontal = 8.dp, vertical = 10.dp)
+                                )
+                            } else {
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = "${aziVal}°",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = foregroundColor, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 8.dp, vertical = 10.dp)
+                                )
+                            }
+                        }
                     }
-                    Text("This is the direction the shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 48.dp, bottom = 8.dp))
+                    Text("This is the direction your shadow points (Sun + 180°).", color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp).fillMaxWidth())
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+            } // End of scrollable Column
 
+            // Pinned Bottom Section
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (lockedData != null) {
                     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.Start) {
+                        val context = LocalContext.current
                         if (useCompassForFullLocation) {
                             if (lockedData.deducedLatitude != null && lockedData.assumedOrDeducedLongitude != null) {
-                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
-                                Text("Deduced Lon: ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Row(modifier = Modifier.clickable {
+                                    val geoUri = android.net.Uri.parse("geo:${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}?q=${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}")
+                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
+                                    context.startActivity(shareIntent)
+                                }) {
+                                    Text("Measured location: ", color = foregroundColor)
+                                    Text("${formatCoordinate(lockedData.deducedLatitude!!, true)}, ${formatCoordinate(lockedData.assumedOrDeducedLongitude!!, false)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+                                }
                             } else {
                                 Text("Could not solve spherical math for this attitude.", color = Color.Red)
                             }
                         } else {
                             if (lockedData.deducedLatitude != null) {
-                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Row(modifier = Modifier.clickable {
+                                    val geoUri = android.net.Uri.parse("geo:${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}?q=${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}")
+                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
+                                    context.startActivity(shareIntent)
+                                }) {
+                                    Text("Measured location: ", color = foregroundColor)
+                                    Text("${formatCoordinate(lockedData.deducedLatitude!!, true)}, ${formatCoordinate(lockedData.assumedOrDeducedLongitude!!, false)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+                                    Text(" (approx. lon)", color = Color.Red, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp).align(Alignment.Bottom))
+                                }
                             } else {
                                 Text("Could not deduce Lat.", color = Color.Red)
                             }
-                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = foregroundColor)
                         }
                     }
                 }
 
-                Button(
-                    onClick = {
-                        if (lockedData == null) {
-                            onLockedDataChange(SextantLockedData(
-                                altitude = liveAlt,
-                                declination = sunData.declination.toFloat(),
-                                deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
-                                assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
-                                lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
-                            ))
-                        } else {
-                            onLockedDataChange(null)
+                if (isReadyToLock) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier.fillMaxWidth(0.9f)
+                    ) {
+                        Button(
+                            onClick = { onLockedDataChange(null) },
+                            modifier = Modifier.weight(1f).padding(end = 8.dp).height(56.dp)
+                        ) {
+                            Text("Reset", fontSize = 16.sp, textAlign = TextAlign.Center)
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
-                ) {
-                    Text(if (lockedData == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+
+                        Button(
+                            onClick = {
+                                if (lockedData == null) {
+                                    onLockedDataChange(SextantLockedData(
+                                        altitude = effectiveAltitude,
+                                        declination = sunData.declination.toFloat(),
+                                        deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
+                                        assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
+                                        lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
+                                    ))
+                                }
+                            },
+                            modifier = Modifier.weight(1f).padding(start = 8.dp).height(56.dp)
+                        ) {
+                            Text("Take Measure", fontSize = 16.sp, textAlign = TextAlign.Center)
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "For measuring, please keep the phone's long edge horizontal.",
+                            color = Color.Red,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
+            }
             }
         }
 
@@ -1899,31 +2130,33 @@ Press with the other hand the lock measurement button.""",
             }
         }
         // Top 60%: Rotated Interactive Controls
-        // Enforce landscape for 3D measurement tools
-        val isPortrait = kotlin.math.abs(liveRoll) < 45f || kotlin.math.abs(liveRoll) > 135f
-
         BoxWithConstraints(
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            if (isPortrait) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                    Text(
-                        text = "For measuring, please keep the phone horizontally.",
-                        color = Color.Red,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            } else {
-                val rotatedWidth = maxHeight
-                val rotatedHeight = maxWidth
+            // liveGravityAngle: 0 = Landscape Right (Top right), 90 = Reverse Portrait, 180/-180 = Landscape Left, -90 = Portrait
+            val normalizedGravityAngle = (liveGravityAngle + 360f) % 360f
 
+            val rotZ = when {
+                normalizedGravityAngle in 225f..315f -> -90f // Portrait (Upright)
+                normalizedGravityAngle in 45f..135f -> 90f // Reverse Portrait
+                normalizedGravityAngle in 315f..360f || normalizedGravityAngle in 0f..45f -> 0f // Landscape Right (charging port left)
+                else -> 180f // Landscape Left (charging port right)
+            }
+
+            val isPortraitHeld = rotZ == -90f || rotZ == 90f
+
+            val boxWidth = if (isPortraitHeld) maxHeight else maxWidth
+            val boxHeight = if (isPortraitHeld) maxWidth else maxHeight
+
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxSize()
+            ) {
                 Box(
                     modifier = Modifier
-                        .graphicsLayer { rotationZ = if (isReverseLandscape) -90f else 90f }
-                        .requiredSize(width = rotatedWidth, height = rotatedHeight)
+                        .graphicsLayer { rotationZ = rotZ }
+                        .requiredSize(width = boxWidth, height = boxHeight)
                         .padding(16.dp)
                 ) {
                     interactiveControlsData(Modifier.fillMaxSize())
