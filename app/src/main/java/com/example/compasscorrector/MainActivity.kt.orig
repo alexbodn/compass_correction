@@ -1566,14 +1566,7 @@ fun SextantScreen(
             val liveFullLoc = if (useCompassForFullLocation) LocationDeducer.deduceFullLocation(effectiveAltitude, effectiveSunAzimuth, effectiveDeclination.toDouble(), currentTimeMillis, isNorthernHemisphere) else null
             val liveDeducedLat = if (!useCompassForFullLocation) LatitudeDeducer.deduceLatitude(effectiveAltitude, effectiveDeclination.toDouble(), sunData.hourAngle, isNorthernHemisphere) else null
 
-            // Make scrollable
-            val scrollState = androidx.compose.foundation.rememberScrollState()
-            Column(
-                modifier = modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 // TABLE STRUCTURE
                 // Columns: [Caption (weight 1.0)] [Manual CB (weight 1.0 or fixed)] [Field (weight 1.0)]
                 val labelColWeight = 1.0f
@@ -1800,34 +1793,20 @@ fun SextantScreen(
 
                 if (lockedData != null) {
                     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalAlignment = Alignment.Start) {
-                        val context = LocalContext.current
                         if (useCompassForFullLocation) {
                             if (lockedData.deducedLatitude != null && lockedData.assumedOrDeducedLongitude != null) {
-                                Row(modifier = Modifier.clickable {
-                                    val geoUri = android.net.Uri.parse("geo:${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}?q=${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}")
-                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
-                                    context.startActivity(shareIntent)
-                                }) {
-                                    Text("Measured location: ", color = foregroundColor)
-                                    Text("${String.format("%.2f°", lockedData.deducedLatitude)}, ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
-                                }
+                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
+                                Text("Deduced Lon: ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Could not solve spherical math for this attitude.", color = Color.Red)
                             }
                         } else {
                             if (lockedData.deducedLatitude != null) {
-                                Row(modifier = Modifier.clickable {
-                                    val geoUri = android.net.Uri.parse("geo:${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}?q=${lockedData.deducedLatitude},${lockedData.assumedOrDeducedLongitude}")
-                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, geoUri)
-                                    context.startActivity(shareIntent)
-                                }) {
-                                    Text("Measured location: ", color = foregroundColor)
-                                    Text("${String.format("%.2f°", lockedData.deducedLatitude)}, ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = Color(0xFF64B5F6), textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
-                                    Text(" (approx. lon)", color = Color.Red, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp).align(Alignment.Bottom))
-                                }
+                                Text("Deduced Lat: ${String.format("%.2f°", lockedData.deducedLatitude)}", color = Color.Green, fontWeight = FontWeight.Bold)
                             } else {
                                 Text("Could not deduce Lat.", color = Color.Red)
                             }
+                            Text("Assumed Lon (Timezone): ${String.format("%.2f°", lockedData.assumedOrDeducedLongitude)}", color = foregroundColor)
                         }
                     }
                 }
@@ -1841,7 +1820,7 @@ fun SextantScreen(
                             onClick = { onLockedDataChange(null) },
                             modifier = Modifier.weight(1f).padding(end = 8.dp).height(56.dp)
                         ) {
-                            Text("Reset", fontSize = 16.sp, textAlign = TextAlign.Center)
+                            Text(if (useCompassForFullLocation) "Reset Location" else "Reset Latitude", fontSize = 16.sp, textAlign = TextAlign.Center)
                         }
 
                         Button(
@@ -1858,7 +1837,7 @@ fun SextantScreen(
                             },
                             modifier = Modifier.weight(1f).padding(start = 8.dp).height(56.dp)
                         ) {
-                            Text("Take Measure", fontSize = 16.sp, textAlign = TextAlign.Center)
+                            Text(if (useCompassForFullLocation) "Calculate Location" else "Calculate Latitude", fontSize = 16.sp, textAlign = TextAlign.Center)
                         }
                     }
                 } else {
@@ -2142,7 +2121,7 @@ Press with the other hand the lock measurement button.""",
                 Box(
                     modifier = Modifier
                         .graphicsLayer { rotationZ = rotZ }
-                        .requiredSize(width = boxWidth * 0.85f, height = boxHeight * 0.85f)
+                        .requiredSize(width = boxWidth, height = boxHeight)
                         .padding(16.dp)
                 ) {
                     interactiveControlsData(Modifier.fillMaxSize())
