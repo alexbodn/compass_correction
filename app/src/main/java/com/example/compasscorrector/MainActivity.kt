@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -563,6 +564,8 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
                     WatchStudyScreen(
                         magneticAzimuth = magneticAzimuth,
                         location = location,
+                        locationStatus = locationStatus,
+                        sextantLockedData = sextantLockedData,
                         useTrueNorth = useTrueNorth,
                         foregroundColor = foregroundColor,
                         currentTimeMillis = currentTimeMillis,
@@ -1611,9 +1614,9 @@ fun SextantScreen(
                     Text("Sun Declination", color = foregroundColor, fontSize = 12.sp, modifier = Modifier.weight(labelColWeight))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
+                        modifier = Modifier.weight(cbColWeight).clickable {
                             isManualDeclination = !isManualDeclination
-                            if (isManualDeclination && lockedData == null) {
+                            if (isManualDeclination) {
                                 manualDeclinationStr = String.format("%.2f", sunData.declination).replace(',', '.')
                             }
                         }
@@ -1622,7 +1625,7 @@ fun SextantScreen(
                             checked = isManualDeclination,
                             onCheckedChange = null,
                             colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                            enabled = lockedData == null,
+                            enabled = true,
                             modifier = Modifier.scale(0.8f)
                         )
                         Text("Manual", color = foregroundColor, fontSize = 12.sp)
@@ -1632,8 +1635,8 @@ fun SextantScreen(
                         manualDeclinationStr = String.format("%.2f", sunData.declination).replace(',', '.')
                     }
 
-                    val isDeclEditable = isManualDeclination && lockedData == null
-                    val declVal = if (lockedData != null) String.format("%.2f", lockedData.declination).replace(',', '.') else manualDeclinationStr
+                    val isDeclEditable = isManualDeclination
+                    val declVal = if (lockedData != null && !isManualDeclination) String.format("%.2f", lockedData.declination).replace(',', '.') else manualDeclinationStr
                     val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
 
                     Box(modifier = Modifier.weight(fieldColWeight).height(40.dp), contentAlignment = Alignment.CenterStart) {
@@ -1669,9 +1672,9 @@ fun SextantScreen(
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
+                        modifier = Modifier.weight(cbColWeight).clickable {
                             isManualAltitude = !isManualAltitude
-                            if (isManualAltitude && lockedData == null) {
+                            if (isManualAltitude) {
                                 manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
                             }
                         }
@@ -1680,7 +1683,7 @@ fun SextantScreen(
                             checked = isManualAltitude,
                             onCheckedChange = null,
                             colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                            enabled = lockedData == null,
+                            enabled = true,
                             modifier = Modifier.scale(0.8f)
                         )
                         Text("Manual", color = foregroundColor, fontSize = 12.sp)
@@ -1690,8 +1693,8 @@ fun SextantScreen(
                         manualAltitudeStr = String.format("%.0f", lastHorizontalAltitude).replace(',', '.')
                     }
 
-                    val isAltEditable = isManualAltitude && lockedData == null
-                    val altVal = if (lockedData != null) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr
+                    val isAltEditable = isManualAltitude
+                    val altVal = if (lockedData != null && !isManualAltitude) String.format("%.0f", lockedData.altitude).replace(',', '.') else manualAltitudeStr
 
                     val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
 
@@ -1756,9 +1759,9 @@ fun SextantScreen(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(cbColWeight).clickable(enabled = lockedData == null) {
+                            modifier = Modifier.weight(cbColWeight).clickable {
                                 isManualShadowAzimuth = !isManualShadowAzimuth
-                                if (isManualShadowAzimuth && lockedData == null) {
+                                if (isManualShadowAzimuth) {
                                     manualShadowAzimuthStr = String.format("%.0f", shadowAzimuth).replace(',', '.')
                                 }
                             }
@@ -1767,14 +1770,14 @@ fun SextantScreen(
                                 checked = isManualShadowAzimuth,
                                 onCheckedChange = null,
                                 colors = CheckboxDefaults.colors(checkedColor = Color.Blue, uncheckedColor = foregroundColor, checkmarkColor = Color.White),
-                                enabled = lockedData == null,
+                                enabled = true,
                             modifier = Modifier.scale(0.8f)
                             )
                             Text("Manual", color = foregroundColor, fontSize = 12.sp)
                         }
 
-                        val isAziEditable = isManualShadowAzimuth && lockedData == null
-                        val aziVal = if (lockedData != null) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr
+                        val isAziEditable = isManualShadowAzimuth
+                        val aziVal = if (lockedData != null && lockedData.lockedShadowAzimuth != null && !isManualShadowAzimuth) String.format("%.0f", lockedData.lockedShadowAzimuth).replace(',', '.') else manualShadowAzimuthStr
 
                         val textFieldShape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
 
@@ -2175,12 +2178,39 @@ Press with the other hand the lock measurement button.""",
 fun WatchStudyScreen(
     magneticAzimuth: Float,
     location: android.location.Location?,
+    locationStatus: LocationStatus,
+    sextantLockedData: SextantLockedData?,
     useTrueNorth: Boolean,
     foregroundColor: Color,
     currentTimeMillis: Long,
     isNorthernHemisphere: Boolean
 ) {
     var selectedParallel by remember { mutableStateOf(40f) }
+    var latSource by remember { mutableStateOf("Manual") }
+
+    LaunchedEffect(Unit) {
+        val isMocked = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            locationStatus is LocationStatus.Valid && locationStatus.location.isMock
+        } else {
+            locationStatus is LocationStatus.Valid && locationStatus.location.isFromMockProvider
+        }
+
+        val isSpoofed = isMocked || TestLocationConfig.gnssSpoofEnabled || TestLocationConfig.networkSpoofEnabled
+
+        if (locationStatus is LocationStatus.Valid && (locationStatus.source == "GPS" || locationStatus.source == "Generic") && !isSpoofed) {
+            latSource = "GNSS"
+            selectedParallel = Math.abs(locationStatus.location.latitude).toFloat()
+        } else if (locationStatus is LocationStatus.Valid && locationStatus.source == "Network" && !isSpoofed) {
+            latSource = "Network"
+            selectedParallel = Math.abs(locationStatus.location.latitude).toFloat()
+        } else if (sextantLockedData?.deducedLatitude != null) {
+            latSource = "Sextant"
+            selectedParallel = Math.abs(sextantLockedData.deducedLatitude).toFloat()
+        } else {
+            latSource = "Timezone"
+            selectedParallel = 45f // Timezone fallback assumption
+        }
+    }
 
     // We want to calculate the true sun azimuth for hours 6 AM to 6 PM
     // at the given latitude. Since we don't have longitude, we'll assume
@@ -2194,12 +2224,59 @@ fun WatchStudyScreen(
         Text("Watch Approximation Study", style = MaterialTheme.typography.titleLarge, color = foregroundColor)
         Text("Malleable Watch Dial (Rotated to Sun)", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 16.dp))
 
+        // Latitude Source Radio Buttons
+        val scrollState = androidx.compose.foundation.rememberScrollState()
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(scrollState),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Source: ", color = foregroundColor, fontSize = 14.sp)
+            val sources = listOf("GNSS", "Network", "Sextant", "Timezone", "Manual")
+            sources.forEach { source ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        latSource = source
+                        when (source) {
+                            "GNSS" -> {
+                                if (locationStatus is LocationStatus.Valid && (locationStatus.source == "GPS" || locationStatus.source == "Generic")) {
+                                    selectedParallel = Math.abs(locationStatus.location.latitude).toFloat()
+                                }
+                            }
+                            "Network" -> {
+                                if (locationStatus is LocationStatus.Valid && locationStatus.source == "Network") {
+                                    selectedParallel = Math.abs(locationStatus.location.latitude).toFloat()
+                                }
+                            }
+                            "Sextant" -> {
+                                if (sextantLockedData?.deducedLatitude != null) {
+                                    selectedParallel = Math.abs(sextantLockedData.deducedLatitude).toFloat()
+                                }
+                            }
+                            "Timezone" -> {
+                                selectedParallel = 45f
+                            }
+                        }
+                    }.padding(horizontal = 4.dp)
+                ) {
+                    RadioButton(
+                        selected = latSource == source,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(selectedColor = Color.Blue, unselectedColor = foregroundColor),
+                        modifier = Modifier.scale(0.8f)
+                    )
+                    Text(source, color = foregroundColor, fontSize = 12.sp)
+                }
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text("Latitude: ${String.format("%.0f°", selectedParallel)}", color = foregroundColor, modifier = Modifier.width(100.dp))
             Slider(
                 value = selectedParallel,
                 onValueChange = {
                     selectedParallel = Math.round(it * 10f) / 10f
+                    latSource = "Manual"
                 },
                 valueRange = 0f..90f,
                 steps = 89,
@@ -2218,18 +2295,29 @@ fun WatchStudyScreen(
                 val cy = canvasHeight / 2f
 
                 // Draw Base Watch Dial (Outer circle)
-                drawCircle(color = foregroundColor, radius = radius, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
+                drawCircle(color = foregroundColor, radius = radius * 0.95f, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
+
+                // Draw outer hyphen track
+                val outerTrackInnerRadius = radius * 0.95f
+                val outerTrackOuterRadius = radius
+                drawCircle(color = foregroundColor, radius = outerTrackOuterRadius, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f))
+
+                for (deg in 0 until 360 step 5) {
+                    val degRad = Math.toRadians(deg.toDouble())
+                    val startX = cx + outerTrackInnerRadius * kotlin.math.cos(degRad).toFloat()
+                    val startY = cy + outerTrackInnerRadius * kotlin.math.sin(degRad).toFloat()
+                    val endX = cx + outerTrackOuterRadius * kotlin.math.cos(degRad).toFloat()
+                    val endY = cy + outerTrackOuterRadius * kotlin.math.sin(degRad).toFloat()
+
+                    val strokeWidth = if (deg % 10 == 0) 4f else 2f
+                    drawLine(color = foregroundColor, start = Offset(startX, startY), end = Offset(endX, endY), strokeWidth = strokeWidth)
+                }
 
                 val currentCal = java.util.Calendar.getInstance()
                 currentCal.timeInMillis = currentTimeMillis
                 val currentHour = currentCal.get(java.util.Calendar.HOUR_OF_DAY)
 
                 // Text Paint
-                val textPaint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.GRAY
-                    textSize = 30f
-                    textAlign = android.graphics.Paint.Align.CENTER
-                }
                 val trueTextPaint = android.graphics.Paint().apply {
                     color = if (foregroundColor == Color.White) android.graphics.Color.CYAN else android.graphics.Color.BLUE
                     textSize = 30f
@@ -2295,10 +2383,10 @@ fun WatchStudyScreen(
                     val trueY = cy + (radius * 0.8f) * kotlin.math.sin(sunRad).toFloat()
 
                     // Draw tick mark for the hour
-                    val tickOuterX = cx + radius * kotlin.math.cos(sunRad).toFloat()
-                    val tickOuterY = cy + radius * kotlin.math.sin(sunRad).toFloat()
-                    val tickInnerX = cx + (radius * 0.9f) * kotlin.math.cos(sunRad).toFloat()
-                    val tickInnerY = cy + (radius * 0.9f) * kotlin.math.sin(sunRad).toFloat()
+                    val tickOuterX = cx + (radius * 0.95f) * kotlin.math.cos(sunRad).toFloat()
+                    val tickOuterY = cy + (radius * 0.95f) * kotlin.math.sin(sunRad).toFloat()
+                    val tickInnerX = cx + (radius * 0.85f) * kotlin.math.cos(sunRad).toFloat()
+                    val tickInnerY = cy + (radius * 0.85f) * kotlin.math.sin(sunRad).toFloat()
                     drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = if (hour == currentHour) 4f else 2f)
 
                     val paintToUseForTrue = if (hour == currentHour) currentHourTextPaint else trueTextPaint
@@ -2326,41 +2414,69 @@ fun WatchStudyScreen(
                 val northBaseCanvasAngle = if (isNorthernHemisphere) northAzimuth - 270.0 else northAzimuth - 90.0
                 val northRotatedCanvasAngle = northBaseCanvasAngle + rotationOffset
                 val northRad = Math.toRadians(northRotatedCanvasAngle)
+                val arrowColor = foregroundColor // Now foreground color instead of Yellow
 
-                val northPaint = android.graphics.Paint().apply {
-                    color = android.graphics.Color.YELLOW
+                // Draw Central Line for True North
+                drawLine(
+                    color = arrowColor,
+                    start = Offset(cx, cy),
+                    end = Offset(cx + radius * 0.95f * kotlin.math.cos(northRad).toFloat(), cy + radius * 0.95f * kotlin.math.sin(northRad).toFloat()),
+                    strokeWidth = 10f
+                )
+
+                // True North Arrow outside circumference
+                val arrowTipX = cx + (radius + 20f) * kotlin.math.cos(northRad).toFloat()
+                val arrowTipY = cy + (radius + 20f) * kotlin.math.sin(northRad).toFloat()
+                val arrowBaseX = cx + radius * kotlin.math.cos(northRad).toFloat()
+                val arrowBaseY = cy + radius * kotlin.math.sin(northRad).toFloat()
+
+                val perpRad = northRad + Math.PI / 2
+                val arrowWidth = 10f
+                val arrowLeftX = arrowBaseX + arrowWidth * kotlin.math.cos(perpRad).toFloat()
+                val arrowLeftY = arrowBaseY + arrowWidth * kotlin.math.sin(perpRad).toFloat()
+                val arrowRightX = arrowBaseX - arrowWidth * kotlin.math.cos(perpRad).toFloat()
+                val arrowRightY = arrowBaseY - arrowWidth * kotlin.math.sin(perpRad).toFloat()
+
+                val arrowPath = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(arrowTipX, arrowTipY)
+                    lineTo(arrowLeftX, arrowLeftY)
+                    lineTo(arrowRightX, arrowRightY)
+                    close()
+                }
+                drawPath(arrowPath, arrowColor)
+
+                // Cardinal and Intercardinal Directions (True North basis)
+                val cardinalPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE.takeIf { foregroundColor == Color.White } ?: android.graphics.Color.BLACK
                     textSize = 40f
                     textAlign = android.graphics.Paint.Align.CENTER
                     isFakeBoldText = true
                 }
-                // Arrow line
-                val arrowStartX = cx + (radius * 0.2f) * kotlin.math.cos(northRad).toFloat()
-                val arrowStartY = cy + (radius * 0.2f) * kotlin.math.sin(northRad).toFloat()
-                val arrowEndX = cx + (radius * 0.9f) * kotlin.math.cos(northRad).toFloat()
-                val arrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(northRad).toFloat()
+                val intercardinalPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE.takeIf { foregroundColor == Color.White } ?: android.graphics.Color.BLACK
+                    textSize = 24f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
 
-                drawLine(
-                    color = Color.Yellow,
-                    start = Offset(arrowStartX, arrowStartY),
-                    end = Offset(arrowEndX, arrowEndY),
-                    strokeWidth = 6f
+                val labels = mapOf(
+                    0.0 to "N", 45.0 to "NE", 90.0 to "E", 135.0 to "SE",
+                    180.0 to "S", 225.0 to "SW", 270.0 to "W", 315.0 to "NW"
                 )
 
-                // Arrowhead
-                val headRad1 = northRad + Math.toRadians(150.0)
-                val headRad2 = northRad - Math.toRadians(150.0)
-                val headX1 = arrowEndX + 30f * kotlin.math.cos(headRad1).toFloat()
-                val headY1 = arrowEndY + 30f * kotlin.math.sin(headRad1).toFloat()
-                val headX2 = arrowEndX + 30f * kotlin.math.cos(headRad2).toFloat()
-                val headY2 = arrowEndY + 30f * kotlin.math.sin(headRad2).toFloat()
+                labels.forEach { (deg, label) ->
+                    val angle = if (isNorthernHemisphere) (northAzimuth + deg) - 270.0 else (northAzimuth + deg) - 90.0
+                    val rotatedAngle = angle + rotationOffset
+                    val rad = Math.toRadians(rotatedAngle)
 
-                drawLine(color = Color.Yellow, start = Offset(arrowEndX, arrowEndY), end = Offset(headX1, headY1), strokeWidth = 6f)
-                drawLine(color = Color.Yellow, start = Offset(arrowEndX, arrowEndY), end = Offset(headX2, headY2), strokeWidth = 6f)
+                    val paint = if (deg % 90 == 0.0) cardinalPaint else intercardinalPaint
 
-                val northTextX = cx + (radius * 0.6f) * kotlin.math.cos(northRad).toFloat()
-                val northTextY = cy + (radius * 0.6f) * kotlin.math.sin(northRad).toFloat()
+                    // Push labels outside the outer ring (radius + padding)
+                    val labelRadius = radius + 35f
+                    val textX = cx + labelRadius * kotlin.math.cos(rad).toFloat()
+                    val textY = cy + labelRadius * kotlin.math.sin(rad).toFloat() + (paint.textSize / 3f)
 
-                drawContext.canvas.nativeCanvas.drawText("N", northTextX, northTextY + 15f, northPaint)
+                    drawContext.canvas.nativeCanvas.drawText(label, textX, textY, paint)
+                }
 
                 // Draw Device Compass Arrows (North and South)
                 // The top of the phone is pointing at the Sun.
@@ -2392,22 +2508,52 @@ fun WatchStudyScreen(
                 }
 
                 // Draw Device North Arrow
-                val magArrowStartX = cx + (radius * 0.2f) * kotlin.math.cos(deviceNorthRad).toFloat()
-                val magArrowStartY = cy + (radius * 0.2f) * kotlin.math.sin(deviceNorthRad).toFloat()
-                val magArrowEndX = cx + (radius * 0.9f) * kotlin.math.cos(deviceNorthRad).toFloat()
-                val magArrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(deviceNorthRad).toFloat()
+                drawLine(color = Color.Red, start = Offset(cx, cy), end = Offset(cx + radius * 0.95f * kotlin.math.cos(deviceNorthRad).toFloat(), cy + radius * 0.95f * kotlin.math.sin(deviceNorthRad).toFloat()), strokeWidth = 10f)
 
-                drawLine(color = Color.Red, start = Offset(magArrowStartX, magArrowStartY), end = Offset(magArrowEndX, magArrowEndY), strokeWidth = 4f)
-                drawContext.canvas.nativeCanvas.drawText("N", magArrowEndX + 20f * kotlin.math.cos(deviceNorthRad).toFloat(), magArrowEndY + 20f * kotlin.math.sin(deviceNorthRad).toFloat() + 10f, redPaint)
+                val magArrowTipX = cx + (radius + 20f) * kotlin.math.cos(deviceNorthRad).toFloat()
+                val magArrowTipY = cy + (radius + 20f) * kotlin.math.sin(deviceNorthRad).toFloat()
+                val magArrowBaseX = cx + radius * kotlin.math.cos(deviceNorthRad).toFloat()
+                val magArrowBaseY = cy + radius * kotlin.math.sin(deviceNorthRad).toFloat()
+
+                val magPerpRad = deviceNorthRad + Math.PI / 2
+                val magArrowLeftX = magArrowBaseX + 10f * kotlin.math.cos(magPerpRad).toFloat()
+                val magArrowLeftY = magArrowBaseY + 10f * kotlin.math.sin(magPerpRad).toFloat()
+                val magArrowRightX = magArrowBaseX - 10f * kotlin.math.cos(magPerpRad).toFloat()
+                val magArrowRightY = magArrowBaseY - 10f * kotlin.math.sin(magPerpRad).toFloat()
+
+                val magArrowPath = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(magArrowTipX, magArrowTipY)
+                    lineTo(magArrowLeftX, magArrowLeftY)
+                    lineTo(magArrowRightX, magArrowRightY)
+                    close()
+                }
+                drawPath(magArrowPath, Color.Red)
+
+                drawContext.canvas.nativeCanvas.drawText("N", cx + (radius + 45f) * kotlin.math.cos(deviceNorthRad).toFloat(), cy + (radius + 45f) * kotlin.math.sin(deviceNorthRad).toFloat() + 10f, redPaint)
 
                 // Draw Device South Arrow
-                val southArrowStartX = cx + (radius * 0.2f) * kotlin.math.cos(deviceSouthRad).toFloat()
-                val southArrowStartY = cy + (radius * 0.2f) * kotlin.math.sin(deviceSouthRad).toFloat()
-                val southArrowEndX = cx + (radius * 0.9f) * kotlin.math.cos(deviceSouthRad).toFloat()
-                val southArrowEndY = cy + (radius * 0.9f) * kotlin.math.sin(deviceSouthRad).toFloat()
+                drawLine(color = Color.Blue, start = Offset(cx, cy), end = Offset(cx + radius * 0.95f * kotlin.math.cos(deviceSouthRad).toFloat(), cy + radius * 0.95f * kotlin.math.sin(deviceSouthRad).toFloat()), strokeWidth = 10f)
 
-                drawLine(color = Color.Blue, start = Offset(southArrowStartX, southArrowStartY), end = Offset(southArrowEndX, southArrowEndY), strokeWidth = 4f)
-                drawContext.canvas.nativeCanvas.drawText("S", southArrowEndX + 20f * kotlin.math.cos(deviceSouthRad).toFloat(), southArrowEndY + 20f * kotlin.math.sin(deviceSouthRad).toFloat() + 10f, bluePaint)
+                val southArrowTipX = cx + (radius + 20f) * kotlin.math.cos(deviceSouthRad).toFloat()
+                val southArrowTipY = cy + (radius + 20f) * kotlin.math.sin(deviceSouthRad).toFloat()
+                val southArrowBaseX = cx + radius * kotlin.math.cos(deviceSouthRad).toFloat()
+                val southArrowBaseY = cy + radius * kotlin.math.sin(deviceSouthRad).toFloat()
+
+                val southPerpRad = deviceSouthRad + Math.PI / 2
+                val southArrowLeftX = southArrowBaseX + 10f * kotlin.math.cos(southPerpRad).toFloat()
+                val southArrowLeftY = southArrowBaseY + 10f * kotlin.math.sin(southPerpRad).toFloat()
+                val southArrowRightX = southArrowBaseX - 10f * kotlin.math.cos(southPerpRad).toFloat()
+                val southArrowRightY = southArrowBaseY - 10f * kotlin.math.sin(southPerpRad).toFloat()
+
+                val southArrowPath = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(southArrowTipX, southArrowTipY)
+                    lineTo(southArrowLeftX, southArrowLeftY)
+                    lineTo(southArrowRightX, southArrowRightY)
+                    close()
+                }
+                drawPath(southArrowPath, Color.Blue)
+
+                drawContext.canvas.nativeCanvas.drawText("S", cx + (radius + 45f) * kotlin.math.cos(deviceSouthRad).toFloat(), cy + (radius + 45f) * kotlin.math.sin(deviceSouthRad).toFloat() + 10f, bluePaint)
 
 
             }
