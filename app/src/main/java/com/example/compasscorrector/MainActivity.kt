@@ -1812,23 +1812,33 @@ fun SextantScreen(
                 }
 
                 if (isReadyToLock) {
-                    Button(
-                        onClick = {
-                            if (lockedData == null) {
-                                onLockedDataChange(SextantLockedData(
-                                    altitude = effectiveAltitude,
-                                    declination = sunData.declination.toFloat(),
-                                    deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
-                                    assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
-                                    lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
-                                ))
-                            } else {
-                                onLockedDataChange(null)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(0.9f).height(56.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier.fillMaxWidth(0.9f)
                     ) {
-                        Text(if (lockedData == null) "Lock Measurement" else "Retake Measurement", fontSize = 18.sp)
+                        Button(
+                            onClick = { onLockedDataChange(null) },
+                            modifier = Modifier.weight(1f).padding(end = 8.dp).height(56.dp)
+                        ) {
+                            Text(if (useCompassForFullLocation) "Reset Location" else "Reset Latitude", fontSize = 16.sp, textAlign = TextAlign.Center)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (lockedData == null) {
+                                    onLockedDataChange(SextantLockedData(
+                                        altitude = effectiveAltitude,
+                                        declination = sunData.declination.toFloat(),
+                                        deducedLatitude = if (useCompassForFullLocation) liveFullLoc?.first?.toFloat() else liveDeducedLat?.toFloat(),
+                                        assumedOrDeducedLongitude = if (useCompassForFullLocation) liveFullLoc?.second?.toFloat() else sunData.estimatedLongitude.toFloat(),
+                                        lockedShadowAzimuth = if (useCompassForFullLocation) (effectiveSunAzimuth + 180f) % 360f else null
+                                    ))
+                                }
+                            },
+                            modifier = Modifier.weight(1f).padding(start = 8.dp).height(56.dp)
+                        ) {
+                            Text(if (useCompassForFullLocation) "Calculate Location" else "Calculate Latitude", fontSize = 16.sp, textAlign = TextAlign.Center)
+                        }
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxWidth(0.9f).height(56.dp), contentAlignment = Alignment.Center) {
@@ -2089,17 +2099,17 @@ Press with the other hand the lock measurement button.""",
             modifier = Modifier.weight(0.6f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            // liveGravityAngle is mapped such that portrait is ~ -90
+            // liveGravityAngle: 0 = Landscape Right (Top right), 90 = Reverse Portrait, 180/-180 = Landscape Left, -90 = Portrait
             val normalizedGravityAngle = (liveGravityAngle + 360f) % 360f
 
             val rotZ = when {
-                normalizedGravityAngle in 225f..315f -> 0f // Portrait (Upright)
-                normalizedGravityAngle in 45f..135f -> 0f // Reverse Portrait (Upside down, bottom of text faces port)
-                normalizedGravityAngle in 315f..360f || normalizedGravityAngle in 0f..45f -> 90f // Landscape
-                else -> -90f // Reverse Landscape
+                normalizedGravityAngle in 225f..315f -> -90f // Portrait (Upright)
+                normalizedGravityAngle in 45f..135f -> 90f // Reverse Portrait
+                normalizedGravityAngle in 315f..360f || normalizedGravityAngle in 0f..45f -> 0f // Landscape Right (charging port left)
+                else -> 180f // Landscape Left (charging port right)
             }
 
-            val isPortraitHeld = rotZ == 0f
+            val isPortraitHeld = rotZ == -90f || rotZ == 90f
 
             val boxWidth = if (isPortraitHeld) maxWidth else maxHeight
             val boxHeight = if (isPortraitHeld) maxHeight else maxWidth
