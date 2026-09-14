@@ -42,6 +42,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -252,7 +253,7 @@ fun CompassApp(sensorHelper: SensorHelper, locationHelper: LocationHelper, hasLo
         }
     }
 
-    val currentTimeMillis = System.currentTimeMillis()
+    val currentTimeMillis = TestLocationConfig.getEffectiveTimeMillis()
 
     // Calculations
     var initialTabCalculated by remember { mutableStateOf(false) }
@@ -2242,8 +2243,8 @@ fun WatchStudyScreen(
 
             sources.forEach { source ->
                 val isEnabled = when (source) {
-                    "GNSS" -> locationStatus is LocationStatus.Valid && (locationStatus.source == "GPS" || locationStatus.source == "Generic") && !isSpoofed
-                    "Network" -> locationStatus is LocationStatus.Valid && locationStatus.source == "Network" && !isSpoofed
+                    "GNSS" -> locationStatus is LocationStatus.Valid && (locationStatus.source == "GPS" || locationStatus.source == "Generic")
+                    "Network" -> locationStatus is LocationStatus.Valid && locationStatus.source == "Network"
                     "Sextant" -> sextantLockedData?.deducedLatitude != null
                     else -> true
                 }
@@ -2269,7 +2270,7 @@ fun WatchStudyScreen(
                                 }
                             }
                             "Timezone" -> {
-                                selectedParallel = 45f
+                                selectedParallel = Math.abs(TimezoneLatitudeLookup.getLatitudeForTimezone())
                             }
                         }
                     }.padding(horizontal = 4.dp)
@@ -2316,7 +2317,12 @@ fun WatchStudyScreen(
                 val cy = canvasHeight / 2f
 
                 // Draw Base Watch Dial (Outer circle)
-                drawCircle(color = foregroundColor, radius = radius * 0.95f, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
+                val innerDialRadius = radius * 0.95f
+
+                // Day/Night Background coloring
+                val dayColor = Color(0xFF64B5F6) // Light Blue
+                val nightColor = Color(0xFF1565C0) // Dark Blue
+                drawCircle(color = nightColor, radius = innerDialRadius, center = Offset(cx, cy))
 
                 val currentCal = java.util.Calendar.getInstance()
                 currentCal.timeInMillis = currentTimeMillis
@@ -2339,6 +2345,47 @@ fun WatchStudyScreen(
 
                 val currentHourCanvasAngle = if (isNorthernHemisphere) currentTrueAzimuth - 270.0 else currentTrueAzimuth - 90.0
                 val rotationOffset = -90.0 - currentHourCanvasAngle
+
+                // Draw Day Slice
+                val dayPath = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(cx, cy)
+                    var startedDay = false
+                    var firstDayAngleRad = 0.0
+
+                    for (hourIndex in 0..240) {
+                        val h = hourIndex / 10.0 // check every 6 minutes
+                        val hRad = Math.toRadians((h - 12) * 15.0)
+                        val sAlt = kotlin.math.sin(latRadCurrent) * kotlin.math.sin(decRadCurrent) + kotlin.math.cos(latRadCurrent) * kotlin.math.cos(decRadCurrent) * kotlin.math.cos(hRad)
+
+                        if (sAlt >= 0) { // Sun is above horizon
+                            val aRad = kotlin.math.asin(sAlt)
+                            val cAz = (kotlin.math.sin(decRadCurrent) - kotlin.math.sin(latRadCurrent) * kotlin.math.sin(aRad)) / (kotlin.math.cos(latRadCurrent) * kotlin.math.cos(aRad))
+                            var tAz = Math.toDegrees(kotlin.math.acos(cAz.coerceIn(-1.0, 1.0)))
+                            if (h > 12) tAz = 360.0 - tAz
+
+                            val cAngle = if (isNorthernHemisphere) tAz - 270.0 else tAz - 90.0
+                            val rAngle = cAngle + rotationOffset
+                            val drawRad = Math.toRadians(rAngle)
+
+                            val px = cx + innerDialRadius * kotlin.math.cos(drawRad).toFloat()
+                            val py = cy + innerDialRadius * kotlin.math.sin(drawRad).toFloat()
+
+                            if (!startedDay) {
+                                lineTo(px, py)
+                                startedDay = true
+                                firstDayAngleRad = drawRad
+                            } else {
+                                lineTo(px, py)
+                            }
+                        }
+                    }
+                    if (startedDay) {
+                        close() // closes back to center implicitly, but drawing to center is safer
+                    }
+                }
+                drawPath(path = dayPath, color = dayColor)
+
+                drawCircle(color = foregroundColor, radius = innerDialRadius, center = Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f))
 
                 // Draw outer hyphen track (aligned with True North using rotationOffset)
                 val outerTrackInnerRadius = radius * 0.95f
@@ -2371,6 +2418,9 @@ fun WatchStudyScreen(
 
                 // Draw True Sun Azimuth "Soft" Dial
                 // From 0 to 23 hours
+                val dayTextPaint = android.graphics.Paint(trueTextPaint).apply { color = nightColor.toArgb() }
+                val nightTextPaint = android.graphics.Paint(trueTextPaint).apply { color = dayColor.toArgb() }
+
                 for (hour in 0..23) {
                     val hourAngle = (hour - 12) * 15.0 // Degrees
 
@@ -2382,6 +2432,7 @@ fun WatchStudyScreen(
                     // Altitude
                     val sinAlt = kotlin.math.sin(latRad) * kotlin.math.sin(decRad) + kotlin.math.cos(latRad) * kotlin.math.cos(decRad) * kotlin.math.cos(haRad)
                     val altRad = kotlin.math.asin(sinAlt)
+                    val isDay = sinAlt >= 0
 
                     // Azimuth
                     val cosAz = (kotlin.math.sin(decRad) - kotlin.math.sin(latRad) * kotlin.math.sin(altRad)) / (kotlin.math.cos(latRad) * kotlin.math.cos(altRad))
@@ -2406,13 +2457,61 @@ fun WatchStudyScreen(
                     val trueY = cy + (radius * 0.8f) * kotlin.math.sin(sunRad).toFloat()
 
                     // Draw tick mark for the hour
-                    val tickOuterX = cx + (radius * 0.95f) * kotlin.math.cos(sunRad).toFloat()
-                    val tickOuterY = cy + (radius * 0.95f) * kotlin.math.sin(sunRad).toFloat()
+                    val tickOuterX = cx + innerDialRadius * kotlin.math.cos(sunRad).toFloat()
+                    val tickOuterY = cy + innerDialRadius * kotlin.math.sin(sunRad).toFloat()
                     val tickInnerX = cx + (radius * 0.85f) * kotlin.math.cos(sunRad).toFloat()
                     val tickInnerY = cy + (radius * 0.85f) * kotlin.math.sin(sunRad).toFloat()
-                    drawLine(color = Color.Gray, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = 2f)
+                    drawLine(color = if (isDay) nightColor else dayColor, start = Offset(tickInnerX, tickInnerY), end = Offset(tickOuterX, tickOuterY), strokeWidth = 2f)
 
-                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, trueTextPaint)
+                    val activePaint = if (isDay) dayTextPaint else nightTextPaint
+                    drawContext.canvas.nativeCanvas.drawText(hour.toString(), trueX, trueY + 10f, activePaint)
+                }
+
+                // Draw Moon Icon
+                val moonAzimuth = MoonPositionCalculator.calculateLunarAzimuth(selectedParallel.toDouble(), 0.0, currentTimeMillis)
+                val moonCanvasAngle = if (isNorthernHemisphere) moonAzimuth - 270.0 else moonAzimuth - 90.0
+                val moonRotatedAngle = moonCanvasAngle + rotationOffset
+                val moonRad = Math.toRadians(moonRotatedAngle)
+
+                val moonIconX = cx + radius * 0.9f * kotlin.math.cos(moonRad).toFloat()
+                val moonIconY = cy + radius * 0.9f * kotlin.math.sin(moonRad).toFloat()
+                val moonIconRadius = 15f
+
+                val phase = MoonPositionCalculator.calculateLunarPhase(currentTimeMillis)
+                val moonColor = Color(0xFFFFF59D) // Pale Yellow
+                val shadowColor = Color.DarkGray
+
+                // Base full moon
+                drawCircle(color = moonColor, radius = moonIconRadius, center = Offset(moonIconX, moonIconY))
+
+                // Terminator drawing
+                if (phase < 0.98) {
+                    if (phase < 0.02) {
+                        drawCircle(color = shadowColor, radius = moonIconRadius, center = Offset(moonIconX, moonIconY))
+                    } else {
+                        val shadowSide = if (phase < 0.5) 1f else -1f
+                        val startAng = 90f // simplified orientation
+                        drawArc(
+                            color = shadowColor,
+                            startAngle = startAng,
+                            sweepAngle = 180f,
+                            useCenter = false,
+                            topLeft = Offset(moonIconX - moonIconRadius, moonIconY - moonIconRadius),
+                            size = androidx.compose.ui.geometry.Size(moonIconRadius * 2, moonIconRadius * 2)
+                        )
+
+                        val widthScale = Math.abs(cos(Math.PI * phase)).toFloat()
+                        val ovalWidth = moonIconRadius * 2 * widthScale
+                        val ovalLeft = moonIconX - ovalWidth / 2
+                        val isLitEllipse = (phase > 0.5)
+                        val ellipseColor = if (isLitEllipse) moonColor else shadowColor
+
+                        drawOval(
+                            color = ellipseColor,
+                            topLeft = Offset(ovalLeft, moonIconY - moonIconRadius),
+                            size = androidx.compose.ui.geometry.Size(ovalWidth, moonIconRadius * 2)
+                        )
+                    }
                 }
 
                 // Draw Sun Icon at Top (-90 degrees)
@@ -2580,7 +2679,7 @@ fun WatchStudyScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "Point the exact current time marker at the top towards the Sun. The arrow matching your theme color shows True North, calculated exactly using today's declination and the selected latitude.",
+            "Point the exact current time marker at the top towards the Sun. The white/black arrow shows True North, calculated exactly using today's declination and the selected latitude.",
             color = foregroundColor,
             fontSize = 12.sp,
             lineHeight = 16.sp,
