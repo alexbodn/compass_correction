@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.sp
 import com.example.compasscorrector.TestLocationConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -33,7 +35,9 @@ fun SpoofScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .imePadding()
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
