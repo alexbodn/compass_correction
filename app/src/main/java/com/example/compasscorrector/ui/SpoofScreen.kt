@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.sp
 import com.example.compasscorrector.TestLocationConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -30,15 +32,12 @@ fun SpoofScreen(
     var gnssInFix by remember { mutableStateOf(TestLocationConfig.gnssInFix) }
     var gnssSpoofCoords by remember { mutableStateOf(TestLocationConfig.gnssSpoofCoords) }
 
-    var timeSpoofEnabled by remember { mutableStateOf(TestLocationConfig.timeSpoofEnabled) }
-    var timeSpoofStr by remember { mutableStateOf(TestLocationConfig.timeSpoofStr) }
-    var timezoneSpoofEnabled by remember { mutableStateOf(TestLocationConfig.timezoneSpoofEnabled) }
-    var timezoneSpoofStr by remember { mutableStateOf(TestLocationConfig.timezoneSpoofStr) }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .imePadding()
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -143,42 +142,6 @@ fun SpoofScreen(
                     )
                 }
 
-                Divider(color = Color.Gray, modifier = Modifier.padding(vertical = 8.dp))
-
-                // Time Spoof Row
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = timeSpoofEnabled,
-                        onCheckedChange = { timeSpoofEnabled = it },
-                        modifier = Modifier.width(40.dp)
-                    )
-                    Text("Time (ISO)", modifier = Modifier.weight(1f), color = foregroundColor)
-                    OutlinedTextField(
-                        value = timeSpoofStr,
-                        onValueChange = { timeSpoofStr = it },
-                        modifier = Modifier.weight(3f),
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(color = foregroundColor)
-                    )
-                }
-
-                // Timezone Spoof Row
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = timezoneSpoofEnabled,
-                        onCheckedChange = { timezoneSpoofEnabled = it },
-                        modifier = Modifier.width(40.dp)
-                    )
-                    Text("Timezone", modifier = Modifier.weight(1f), color = foregroundColor)
-                    OutlinedTextField(
-                        value = timezoneSpoofStr,
-                        onValueChange = { timezoneSpoofStr = it },
-                        modifier = Modifier.weight(3f),
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(color = foregroundColor)
-                    )
-                }
-
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -196,13 +159,8 @@ fun SpoofScreen(
                         TestLocationConfig.gnssInFix = gnssInFix
                         TestLocationConfig.gnssSpoofCoords = gnssSpoofCoords
 
-                        TestLocationConfig.timeSpoofEnabled = timeSpoofEnabled
-                        TestLocationConfig.timeSpoofStr = timeSpoofStr
-                        TestLocationConfig.timezoneSpoofEnabled = timezoneSpoofEnabled
-                        TestLocationConfig.timezoneSpoofStr = timezoneSpoofStr
-
-                        // Testing mode is implicitly active if any toggle is true
-                        TestLocationConfig.isTestingMode = gnssSpoofEnabled || networkSpoofEnabled || timeSpoofEnabled || timezoneSpoofEnabled
+                        // Testing mode is implicitly active if either toggle is true
+                        TestLocationConfig.isTestingMode = gnssSpoofEnabled || networkSpoofEnabled
                     }) {
                         Text("Apply Overrides")
                     }
